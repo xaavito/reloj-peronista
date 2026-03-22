@@ -1,0 +1,23 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// ========== CONFIGURACIÓN WIFI ==========
+// IMPORTANTE: Reemplaza con tus credenciales WiFi
+const char* WIFI_SSID = "TU_WIFI_SSID";
+const char* WIFI_PASSWORD = "TU_WIFI_PASSWORD";
+
+// ========== CONFIGURACIÓN NTP ==========
+const char* NTP_SERVER = "pool.ntp.org";
+const long GMT_OFFSET_SEC = -10800;  // GMT-3 (Argentina)
+const int DAYLIGHT_OFFSET_SEC = 0;
+
+// ========== CONFIGURACIÓN PANTALLA OLED ==========
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+#define OLED_RESET -1
+#define SCREEN_ADDRESS 0x3C  // Dirección I2C (0x3C o 0x3D)
+
+// ========== CONFIGURACIÓN EFEMÉRIDES ==========
+const unsigned long EFEMERIDE_INTERVAL = 180000; // 3 minutos en milisegundos
+
+#endif
