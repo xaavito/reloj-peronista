@@ -20,4 +20,10 @@ const int DAYLIGHT_OFFSET_SEC = 0;
 // ========== CONFIGURACIÓN EFEMÉRIDES ==========
 const unsigned long EFEMERIDE_INTERVAL = 180000; // 3 minutos en milisegundos
 
+// ========== CONFIGURACIÓN OPENWEATHER API ==========
+const char* OPENWEATHER_API_KEY = "TU_API_KEY_AQUI";
+const char* OPENWEATHER_CITY = "Buenos Aires";  // Tu ciudad
+const char* OPENWEATHER_COUNTRY = "AR";  // Código de país
+const unsigned long WEATHER_UPDATE_INTERVAL = 3600000; // Actualizar cada 1 hora
+
 #endif

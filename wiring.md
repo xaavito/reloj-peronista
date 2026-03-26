@@ -60,12 +60,57 @@
 
 ### Botón de Modo (Opcional)
 
+**Botón Táctil 4 Pines (6mm x 5.1mm)**
+
 | **Botón**    | **Pin ESP32**    | **Descripción**                    |
 |--------------|------------------|------------------------------------|
-| Terminal 1   | **GPIO 15**      | Señal del botón                     |
-| Terminal 2   | **GND**          | Tierra común                        |
+| Pin 1 o Pin 2 | **GPIO 15**     | Señal del botón                     |
+| Pin 3 o Pin 4 | **GND**         | Tierra común                        |
+
+**¿Cómo Funciona el Botón de 4 Pines?**
+
+Este botón tiene 4 pines organizados en 2 pares:
+```
+    1 ●═══● 2
+      ║ ║ ║
+    3 ●═══● 4
+```
+
+- **Pines 1 y 2**: Están conectados internamente (mismo lado)
+- **Pines 3 y 4**: Están conectados internamente (mismo lado)
+- Al presionar: Los dos lados se conectan (1-2 se conecta con 3-4)
+
+**Conexión Simple:**
+1. Conecta **cualquier pin del lado superior** (1 o 2) a **GPIO 15**
+2. Conecta **cualquier pin del lado inferior** (3 o 4) a **GND**
+
+**Alternativas Válidas:**
+- Pin 1 → GPIO 15, Pin 3 → GND ✅
+- Pin 1 → GPIO 15, Pin 4 → GND ✅
+- Pin 2 → GPIO 15, Pin 3 → GND ✅
+- Pin 2 → GPIO 15, Pin 4 → GND ✅
 
 **Nota**: El botón usa la resistencia pull-up interna del ESP32, no necesitas resistencia externa.
+
+### Sensor AHT10 (Temperatura y Humedad)
+
+| **Pin AHT10** | **Pin ESP32**    | **Descripción**                    |
+|---------------|------------------|------------------------------------|
+| **VCC**       | **3.3V**         | Alimentación 3.3V                   |
+| **GND**       | **GND**          | Tierra común                        |
+| **SCL**       | **GPIO 22**      | Reloj I2C (compartido con OLED)     |
+| **SDA**       | **GPIO 21**      | Datos I2C (compartido con OLED)     |
+
+### Sensor BMP180 (Presión y Temperatura)
+
+| **Pin BMP180** | **Pin ESP32**   | **Descripción**                    |
+|----------------|------------------|------------------------------------|
+| **VCC**        | **3.3V**         | Alimentación 3.3V                   |
+| **GND**        | **GND**          | Tierra común                        |
+| **SCL**        | **GPIO 22**      | Reloj I2C (compartido con OLED)     |
+| **SDA**        | **GPIO 21**      | Datos I2C (compartido con OLED)     |
+
+**Nota**: Todos los dispositivos I2C (OLED, AHT10, BMP180) comparten los mismos pines SDA y SCL. Cada uno tiene una dirección I2C única.
 
 ## Vista Detallada del ESP32
 
