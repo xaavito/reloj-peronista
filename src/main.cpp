@@ -1,3 +1,8 @@
+// ============================================
+// RELOJ PERONISTA - OLED SSD1306 128x32
+// CON ALARMA CONFIGURABLE
+// ============================================
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -10,7 +15,9 @@
 #include "time.h"
 #include "config.h"
 
+// Inicializar display OLED
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
 Adafruit_AHTX0 aht;
 Adafruit_BMP085 bmp;
 
@@ -19,162 +26,115 @@ unsigned long lastEfemerideTime = 0;
 bool showingEfemeride = false;
 int currentEfemerideIndex = 0;
 
-// Variables para alternar entre hora y fecha
 unsigned long lastDateToggleTime = 0;
 bool showingDate = false;
-const unsigned long DATE_SHOW_INTERVAL = 30000; // Mostrar fecha cada 30 segundos
-const unsigned long DATE_DISPLAY_DURATION = 2000; // Mostrar fecha durante 2 segundos
 
-// Variables para efecto marquesina en efemérides
 int16_t marqueeX = 0;
 unsigned long lastMarqueeUpdate = 0;
-const unsigned long MARQUEE_SPEED = 50; // Milisegundos entre movimientos
+const unsigned long MARQUEE_SPEED = 50;
 
-// Variables para sincronización periódica
 unsigned long lastTimeSync = 0;
-const unsigned long TIME_SYNC_INTERVAL = 86400000; // 24 horas en milisegundos (1 día)
+const unsigned long TIME_SYNC_INTERVAL = 86400000;
 
-// Variables para control de brillo nocturno
-const int NIGHT_START_HOUR = 22;  // 22:00 (10 PM)
-const int NIGHT_END_HOUR = 7;     // 07:00 (7 AM)
-const uint8_t BRIGHTNESS_DAY = 255;    // Brillo máximo durante el día
-const uint8_t BRIGHTNESS_NIGHT = 30;   // Brillo muy bajo durante la noche
-bool isNightMode = false;
-unsigned long lastBrightnessCheck = 0;
-const unsigned long BRIGHTNESS_CHECK_INTERVAL = 60000; // Verificar cada minuto
+// ========== VARIABLES ALARMA ==========
+#ifdef ALARM_ENABLED
+bool alarmEnabled = ALARM_ENABLED;
+int alarmHour = ALARM_HOUR;
+int alarmMinute = ALARM_MINUTE;
+#else
+bool alarmEnabled = true;
+int alarmHour = 7;
+int alarmMinute = 30;
+#endif
+bool alarmTriggered = false;
+unsigned long alarmStartTime = 0;
+unsigned long lastAlarmBlink = 0;
+bool alarmBlinkState = false;
 
-// Variables para control de botón y modos
-const int BUTTON_PIN = 15;  // GPIO 15 para el botón
+// Botones
+const int BUTTON_PIN = 15;          // Botón cambio de modo
+const int ALARM_BUTTON_PIN = 4;      // Botón configuración alarma
+
+// Configuración de alarma
+bool alarmConfigMode = false;
+int alarmConfigField = 0;             // 0=hora, 1=minuto, 2=on/off, 3=guardar
+int tempAlarmHour = 7;
+int tempAlarmMinute = 30;
+bool tempAlarmEnabled = true;
+unsigned long alarmButtonPressStart = 0;
+bool alarmButtonLongPressDetected = false;
+
 enum DisplayMode {
-  MODE_AUTO,              // Modo automático (alterna hora/fecha/efemérides)
-  MODE_CLOCK_ONLY,        // Solo muestra hora
-  MODE_DATE_ONLY,         // Solo muestra fecha
-  MODE_EPHEMERIS_ONLY,    // Solo muestra efemérides
-  MODE_TEMPERATURE,       // Solo muestra temperatura
-  MODE_HUMIDITY,          // Solo muestra humedad
-  MODE_WEATHER,           // Alterna temperatura y humedad
-  MODE_FORECAST           // Muestra pronóstico de OpenWeather
+  MODE_AUTO,
+  MODE_CLOCK_ONLY,
+  MODE_DATE_ONLY,
+  MODE_EPHEMERIS_ONLY,
+  MODE_SENSORS,
+  MODE_FORECAST
 };
 DisplayMode currentMode = MODE_AUTO;
 unsigned long lastButtonPress = 0;
-const unsigned long DEBOUNCE_DELAY = 200; // Debounce de 200ms
 
-// Variables para sensores
 float temperature = 0.0;
 float humidity = 0.0;
 float pressure = 0.0;
 unsigned long lastSensorRead = 0;
-const unsigned long SENSOR_READ_INTERVAL = 10000; // Leer sensores cada 10 segundos
+const unsigned long SENSOR_READ_INTERVAL = 10000;
 bool sensorsAvailable = false;
 
-// Variables para alternar en modo clima
-unsigned long lastWeatherToggle = 0;
-bool showingTemp = true;
-const unsigned long WEATHER_TOGGLE_INTERVAL = 3000; // Cambiar cada 3 segundos
+unsigned long lastSensorToggle = 0;
+int sensorDisplayIndex = 0;  // 0=temp, 1=humidity, 2=pressure
 
-// Variables para OpenWeather API - Forecast de 3 días
 struct DayForecast {
   float tempMin;
   float tempMax;
-  String weatherMain;  // "Clear", "Clouds", "Rain", etc.
+  String weatherMain;
   String description;
   int dayOfMonth;
 };
 
-DayForecast forecasts[3];  // Pronóstico para 3 días
+DayForecast forecasts[3];
 int numForecasts = 0;
 unsigned long lastWeatherUpdate = 0;
 bool weatherDataAvailable = false;
-int forecastDisplayIndex = 0; // Para alternar entre diferentes días
 
-// Lista de efemérides peronistas
+// Efemérides peronistas
 const char* efemerides[] = {
 "08/10/1895 Nace Juan Domingo Perón",
 "07/05/1919 Nace Eva Duarte de Perón",
-"04/06/1943 Golpe militar del GOU en el que emerge Perón",
-"27/10/1943 Perón asume en el Departamento de Trabajo",
-"02/12/1943 Creación de la Secretaría de Trabajo y Previsión",
-"24/02/1944 Perón asume como vicepresidente",
-"17/10/1945 Movilización obrera (Día de la Lealtad)",
-"22/10/1945 Liberación de Perón tras presión popular",
-"24/02/1946 Elección que lleva a Perón al poder",
-"04/06/1946 Asume Perón como presidente por primera vez",
-"20/12/1945 Formación del Partido Laborista",
-"09/07/1947 Declaración de Independencia Económica",
-"08/07/1947 Gira europea de Evita",
-"23/09/1947 Sanción del voto femenino",
-"03/01/1947 Creación del Consejo Económico",
-"01/05/1947 Discurso clave de Evita",
-"21/11/1946 Creación del IAPI",
-"19/06/1948 Creación de la Fundación Eva Perón",
+"04/06/1943 Golpe militar del GOU",
+"27/10/1943 Perón asume Trabajo",
+"02/12/1943 Secretaría de Trabajo",
+"24/02/1944 Perón vicepresidente",
+"17/10/1945 Día de la Lealtad",
+"22/10/1945 Liberación de Perón",
+"24/02/1946 Elección de Perón",
+"04/06/1946 Asume Perón presidente",
+"09/07/1947 Independencia Económica",
+"23/09/1947 Voto femenino",
+"19/06/1948 Fundación Eva Perón",
 "11/03/1949 Reforma Constitucional",
-"09/04/1949 Promulgación Constitución",
-"01/05/1950 Acto del Día del Trabajador",
-"22/08/1951 Cabildo Abierto del Justicialismo",
-"31/08/1951 Renunciamiento de Evita",
-"11/11/1951 Primera elección con voto femenino",
-"01/05/1952 Último discurso de Evita",
-"04/06/1952 Segundo mandato de Perón",
+"22/08/1951 Cabildo Abierto",
+"31/08/1951 Renunciamiento Evita",
 "26/07/1952 Fallece Eva Perón",
-"26/07/1953 Primer aniversario sin Evita",
-"16/06/1955 Bombardeo a Plaza de Mayo",
-"16/09/1955 Derrocamiento de Perón",
-"05/10/1955 Disolución del Partido Peronista",
-"09/06/1956 Levantamiento peronista (Valle)",
-"17/11/1972 Regreso de Perón al país",
-"18/11/1972 Día de la Militancia",
-"11/03/1973 Elección de Héctor Cámpora",
+"16/06/1955 Bombardeo Plaza Mayo",
+"16/09/1955 Derrocamiento Perón",
+"17/11/1972 Regreso de Perón",
+"18/11/1972 Día Militancia",
 "25/05/1973 Asume Cámpora",
-"20/06/1973 Masacre de Ezeiza",
-"13/07/1973 Renuncia Cámpora",
-"01/07/1973 Asume Raúl Lastiri",
-"23/09/1973 Elección de Perón",
-"12/10/1973 Asume Perón (tercer mandato)",
-"25/09/1973 Asesinato de Rucci",
-"01/05/1974 Ruptura con Montoneros",
-"12/06/1974 Último discurso de Perón",
-"01/07/1974 Fallece Juan Domingo Perón",
-"01/07/1974 Asume Isabel Perón",
-"24/03/1976 Golpe militar",
-"23/01/1987 Reorganización del PJ",
+"12/10/1973 Asume Perón 3er mandato",
+"01/07/1974 Fallece Perón",
 "25/05/2003 Asume Néstor Kirchner",
-"27/04/2003 Elección presidencial",
-"27/10/2007 Elección de Cristina Fernández",
-"10/12/2007 Asume Cristina Fernández",
-"27/10/2010 Fallece Néstor Kirchner",
-"23/10/2011 Reelección de Cristina",
-"09/12/2015 Último acto de Cristina",
-"10/12/2015 Fin del ciclo kirchnerista",
-"27/10/2019 Elección de Alberto Fernández",
-"10/12/2019 Asume Alberto Fernández",
-"01/03/2020 Primer discurso presidencial",
-"17/10/2020 Día de la Lealtad en pandemia",
-"01/03/2021 Apertura legislativa",
-"01/03/2022 Discurso presidencial",
-"01/03/2023 Último discurso de gestión",
-"25/05/2023 Actos políticos peronistas",
-"07/05/2023 Actos por Evita",
-"08/10/2023 Actos por Perón",
-"17/10/2023 Movilización peronista",
-"20/11/2023 Contexto electoral",
-"10/12/2023 Fin del gobierno de Alberto Fernández",
-"01/05/2024 Día del trabajador",
-"25/05/2024 Actos peronistas",
-"07/05/2024 Homenaje a Evita",
-"08/10/2024 Homenaje a Perón",
-"17/10/2024 Día de la Lealtad",
-"17/11/2024 Día de la militancia",
-"26/07/2024 Homenaje a Evita",
-"27/10/2024 Recuerdo de Néstor Kirchner",
-"09/07/2024 Actos independencia",
-"20/06/2024 Actos políticos vinculados"
+"10/12/2007 Asume Cristina",
+"27/10/2010 Fallece Néstor",
+"10/12/2019 Asume Alberto Fernández"
 };
 const int numEfemerides = sizeof(efemerides) / sizeof(efemerides[0]);
 
 // ========== FUNCIONES ==========
 
 void connectWiFi() {
-  Serial.print("Conectando a WiFi");
+  Serial.print("Conectando WiFi");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   
   int attempts = 0;
@@ -185,17 +145,16 @@ void connectWiFi() {
   }
   
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi conectado!");
-    Serial.print("IP: ");
+    Serial.println("\nWiFi OK!");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\nNo se pudo conectar al WiFi");
+    Serial.println("\nWiFi FAIL");
   }
 }
 
 void setupTime() {
   configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
-  Serial.println("Sincronizando hora con NTP...");
+  Serial.println("Sync NTP...");
   
   struct tm timeinfo;
   int attempts = 0;
@@ -206,27 +165,23 @@ void setupTime() {
   }
   
   if (attempts < 10) {
-    Serial.println("\nHora sincronizada!");
-    lastTimeSync = millis(); // Guardar el momento de la sincronización
+    Serial.println("\nHora OK!");
+    lastTimeSync = millis();
   } else {
-    Serial.println("\nNo se pudo sincronizar la hora");
+    Serial.println("\nHora FAIL");
   }
 }
 
 void resyncTime() {
-  Serial.println("Resincronizando hora con NTP...");
+  Serial.println("Resync NTP...");
   
-  // Verificar que seguimos conectados al WiFi
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi desconectado. Reconectando...");
     connectWiFi();
   }
   
   if (WiFi.status() == WL_CONNECTED) {
     struct tm timeinfo;
     int attempts = 0;
-    
-    // Forzar resincronización configurando de nuevo
     configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
     
     while (!getLocalTime(&timeinfo) && attempts < 10) {
@@ -236,45 +191,8 @@ void resyncTime() {
     }
     
     if (attempts < 10) {
-      Serial.println("\nHora resincronizada exitosamente!");
-      Serial.printf("Nueva hora: %02d:%02d:%02d - %02d/%02d/%04d\n", 
-                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
-                   timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+      Serial.println("\nResync OK!");
       lastTimeSync = millis();
-    } else {
-      Serial.println("\nError al resincronizar. Se reintentará en la próxima ventana.");
-    }
-  }
-}
-
-void adjustBrightness() {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    return; // Si no hay hora, no ajustar
-  }
-  
-  int currentHour = timeinfo.tm_hour;
-  bool shouldBeNight = false;
-  
-  // Verificar si estamos en horario nocturno (22:00 - 07:00)
-  if (currentHour >= NIGHT_START_HOUR || currentHour < NIGHT_END_HOUR) {
-    shouldBeNight = true;
-  }
-  
-  // Solo cambiar si el modo cambió
-  if (shouldBeNight != isNightMode) {
-    isNightMode = shouldBeNight;
-    
-    if (isNightMode) {
-      // Activar modo nocturno (brillo bajo)
-      display.ssd1306_command(0x81); // Comando de contraste
-      display.ssd1306_command(BRIGHTNESS_NIGHT);
-      Serial.println("Modo nocturno activado - Brillo bajo");
-    } else {
-      // Activar modo día (brillo alto)
-      display.ssd1306_command(0x81); // Comando de contraste
-      display.ssd1306_command(BRIGHTNESS_DAY);
-      Serial.println("Modo día activado - Brillo alto");
     }
   }
 }
@@ -285,25 +203,24 @@ void displayTime() {
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
-    display.setCursor(10, 12);
-    display.print("Error de hora");
+    display.setCursor(15, 12);
+    display.print("Error hora");
     display.display();
     return;
   }
   
   display.clearDisplay();
   
-  // Mostrar hora en formato GRANDE ocupando toda la altura (HH:MM)
-  display.setTextSize(4);  // Tamaño 4 = 32px alto (máximo para pantalla de 32px)
+  // Hora GRANDE adaptada a 128x32
+  display.setTextSize(3);
   display.setTextColor(SSD1306_WHITE);
   
   char timeStr[6];
   sprintf(timeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
   
-  // Centrar horizontalmente, posicionar desde Y=0 para ocupar toda la altura
-  // Tamaño 4: cada caracter = 24px ancho, 5 caracteres = 120px
-  int16_t x = (SCREEN_WIDTH - 120) / 2;  // Centrado horizontal
-  int16_t y = 0;   // Desde arriba para ocupar toda la altura (32px)
+  // Posición ajustada para que entre completo
+  int16_t x = 8;
+  int16_t y = 8;
   
   display.setCursor(x, y);
   display.print(timeStr);
@@ -313,27 +230,17 @@ void displayTime() {
 
 void displayDate() {
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    return;
-  }
+  if (!getLocalTime(&timeinfo)) return;
   
   display.clearDisplay();
   
-  // Mostrar fecha grande ocupando máxima altura
-  display.setTextSize(4);  // Tamaño 4 para ocupar toda la altura disponible
+  display.setTextSize(3);
   display.setTextColor(SSD1306_WHITE);
   
   char dateStr[12];
-  sprintf(dateStr, "%02d/%02d", 
-          timeinfo.tm_mday, 
-          timeinfo.tm_mon + 1);  // Solo día y mes
+  sprintf(dateStr, "%02d/%02d", timeinfo.tm_mday, timeinfo.tm_mon + 1);
   
-  // Centrar la fecha horizontalmente, desde arriba verticalmente
-  // Tamaño 4: cada caracter = 24px ancho, 5 caracteres (DD/MM) = 120px
-  int16_t x = (SCREEN_WIDTH - 120) / 2;
-  int16_t y = 0;  // Desde arriba para ocupar toda la altura
-  
-  display.setCursor(x, y);
+  display.setCursor(15, 6);
   display.print(dateStr);
   
   display.display();
@@ -342,32 +249,25 @@ void displayDate() {
 void displayEfemeride() {
   unsigned long currentMillis = millis();
   
-  // Actualizar posición de marquesina cada MARQUEE_SPEED ms
   if (currentMillis - lastMarqueeUpdate >= MARQUEE_SPEED) {
     lastMarqueeUpdate = currentMillis;
-    marqueeX -= 2; // Mover 2 píxeles a la izquierda
+    marqueeX -= 2;
   }
   
   display.clearDisplay();
-  display.setTextSize(3);  // Texto GRANDE para efemérides - ocupa casi todo el alto
-  display.setTextColor(SSD1306_WHITE);
   
-  // Obtener el texto de la efeméride actual (sin saltos de línea)
   String efemText = String(efemerides[currentEfemerideIndex]);
-  efemText.replace("\n", " - ");  // Reemplazar saltos por guiones
+  efemText.replace("\n", " ");
   
-  // Calcular ancho del texto
-  int16_t textWidth = efemText.length() * 18;  // 18px por caracter en tamaño 3
+  int16_t textWidth = efemText.length() * 6;
   
-  // Si el texto llegó al final, reiniciar desde la derecha
   if (marqueeX < -textWidth) {
-    marqueeX = SCREEN_WIDTH;
+    marqueeX = 128;
   }
   
-  // Centrar verticalmente (tamaño 3 = 24px de alto)
-  int16_t y = (SCREEN_HEIGHT - 24) / 2;
-  
-  display.setCursor(marqueeX, y);
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(marqueeX, 12);
   display.print(efemText);
   
   display.display();
@@ -376,32 +276,27 @@ void displayEfemeride() {
 void readSensors() {
   if (!sensorsAvailable) return;
   
-  // Leer sensor AHT10 (temperatura y humedad)
   sensors_event_t humid, temp;
   aht.getEvent(&humid, &temp);
   temperature = temp.temperature;
   humidity = humid.relative_humidity;
+  pressure = bmp.readPressure() / 100.0;
   
-  // Leer sensor BMP180 (presión y temperatura alternativa)
-  pressure = bmp.readPressure() / 100.0; // Convertir a hPa
-  
-  Serial.printf("Temp: %.1f°C | Hum: %.1f%% | Pres: %.1fhPa\n", 
-                temperature, humidity, pressure);
+  Serial.printf("T:%.1f H:%.1f P:%.1f\n", temperature, humidity, pressure);
 }
 
 void displayTemperature() {
   display.clearDisplay();
-  display.setTextSize(3);
-  display.setTextColor(SSD1306_WHITE);
   
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(30, 0);
+  display.print("TEMP");
+  
+  display.setTextSize(3);
   char tempStr[10];
   sprintf(tempStr, "%.1fC", temperature);
-  
-  // Centrar el texto
-  int16_t x = 10;
-  int16_t y = 4;
-  
-  display.setCursor(x, y);
+  display.setCursor(5, 12);
   display.print(tempStr);
   
   display.display();
@@ -409,169 +304,321 @@ void displayTemperature() {
 
 void displayHumidity() {
   display.clearDisplay();
-  display.setTextSize(3);
-  display.setTextColor(SSD1306_WHITE);
   
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(35, 0);
+  display.print("HUM");
+  
+  display.setTextSize(3);
   char humStr[10];
   sprintf(humStr, "%.1f%%", humidity);
-  
-  // Centrar el texto
-  int16_t x = 10;
-  int16_t y = 4;
-  
-  display.setCursor(x, y);
+  display.setCursor(5, 12);
   display.print(humStr);
   
   display.display();
 }
 
-// Funciones para dibujar íconos del clima
-void drawSun(int16_t x, int16_t y) {
-  // Sol: círculo con rayos
-  display.fillCircle(x, y, 4, SSD1306_WHITE);
-  // Rayos
-  display.drawLine(x, y-7, x, y-5, SSD1306_WHITE);
-  display.drawLine(x, y+5, x, y+7, SSD1306_WHITE);
-  display.drawLine(x-7, y, x-5, y, SSD1306_WHITE);
-  display.drawLine(x+5, y, x+7, y, SSD1306_WHITE);
-  display.drawLine(x-5, y-5, x-3, y-3, SSD1306_WHITE);
-  display.drawLine(x+3, y-3, x+5, y-5, SSD1306_WHITE);
-  display.drawLine(x-5, y+5, x-3, y+3, SSD1306_WHITE);
-  display.drawLine(x+3, y+3, x+5, y+5, SSD1306_WHITE);
+void displayPressure() {
+  display.clearDisplay();
+  
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(25, 0);
+  display.print("PRESION");
+  
+  display.setTextSize(2);
+  char pressStr[15];
+  sprintf(pressStr, "%.1fhPa", pressure);
+  display.setCursor(10, 13);
+  display.print(pressStr);
+  
+  display.display();
 }
 
-void drawCloud(int16_t x, int16_t y) {
-  // Nube: círculos conectados
-  display.fillCircle(x-3, y, 3, SSD1306_WHITE);
-  display.fillCircle(x, y-2, 3, SSD1306_WHITE);
-  display.fillCircle(x+3, y, 3, SSD1306_WHITE);
-  display.fillRect(x-3, y, 6, 3, SSD1306_WHITE);
-}
-
-void drawRain(int16_t x, int16_t y) {
-  // Nube con lluvia
-  drawCloud(x, y-3);
-  // Gotas
-  display.drawLine(x-3, y+3, x-3, y+6, SSD1306_WHITE);
-  display.drawLine(x, y+4, x, y+7, SSD1306_WHITE);
-  display.drawLine(x+3, y+3, x+3, y+6, SSD1306_WHITE);
-}
-
-void drawSnow(int16_t x, int16_t y) {
-  // Nube con nieve
-  drawCloud(x, y-3);
-  // Copos
-  display.drawPixel(x-3, y+4, SSD1306_WHITE);
-  display.drawPixel(x, y+6, SSD1306_WHITE);
-  display.drawPixel(x+3, y+4, SSD1306_WHITE);
-}
-
-void drawThunderstorm(int16_t x, int16_t y) {
-  // Nube con rayo
-  drawCloud(x, y-3);
-  // Rayo
-  display.drawLine(x, y+2, x-2, y+4, SSD1306_WHITE);
-  display.drawLine(x-2, y+4, x+1, y+4, SSD1306_WHITE);
-  display.drawLine(x+1, y+4, x-1, y+7, SSD1306_WHITE);
-}
-
-void drawWeatherIcon(int16_t x, int16_t y, String weatherMain) {
-  if (weatherMain == "Clear") {
-    drawSun(x, y);
-  } else if (weatherMain == "Clouds") {
-    drawCloud(x, y);
-  } else if (weatherMain == "Rain" || weatherMain == "Drizzle") {
-    drawRain(x, y);
-  } else if (weatherMain == "Snow") {
-    drawSnow(x, y);
-  } else if (weatherMain == "Thunderstorm") {
-    drawThunderstorm(x, y);
-  } else {
-    // Por defecto: nube
-    drawCloud(x, y);
+String urlEncode(String str) {
+  String encoded = "";
+  for (int i = 0; i < str.length(); i++) {
+    char c = str.charAt(i);
+    if (c == ' ') encoded += '+';
+    else if (isalnum(c)) encoded += c;
+    else {
+      encoded += '%';
+      if (c < 16) encoded += '0';
+      encoded += String(c, HEX);
+    }
   }
+  return encoded;
 }
 
 void fetchWeatherForecast() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi no conectado. No se puede obtener pronóstico.");
-    return;
-  }
+  if (WiFi.status() != WL_CONNECTED) return;
   
   HTTPClient http;
-  
-  // Construir URL para OpenWeather API (5 day forecast)
+  String cityEncoded = urlEncode(String(OPENWEATHER_CITY));
   String url = "http://api.openweathermap.org/data/2.5/forecast?q=";
-  url += OPENWEATHER_CITY;
-  url += ",";
-  url += OPENWEATHER_COUNTRY;
-  url += "&appid=";
-  url += OPENWEATHER_API_KEY;
-  url += "&units=metric&lang=es&cnt=24"; // 24 items = 3 días (cada 3 horas)
+  url += cityEncoded + "," + OPENWEATHER_COUNTRY;
+  url += "&appid=" + String(OPENWEATHER_API_KEY);
+  url += "&units=metric&lang=es&cnt=24";
   
-  Serial.println("Obteniendo pronóstico del tiempo...");
-  
+  Serial.println("Obteniendo clima...");
   http.begin(url);
   int httpCode = http.GET();
   
   if (httpCode == HTTP_CODE_OK) {
     String payload = http.getString();
-    Serial.println("Respuesta recibida");
-    
-    // Parsear JSON
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, payload);
     
-    if (error) {
-      Serial.print("Error parseando JSON: ");
-      Serial.println(error.c_str());
-      http.end();
-      return;
+    if (!error) {
+      numForecasts = 0;
+      int lastDay = -1;
+      JsonArray list = doc["list"].as<JsonArray>();
+      
+      for (JsonObject item : list) {
+        long dt = item["dt"];
+        struct tm* timeinfo = localtime((time_t*)&dt);
+        int day = timeinfo->tm_mday;
+        
+        if (day != lastDay && timeinfo->tm_hour >= 12 && timeinfo->tm_hour <= 15) {
+          if (numForecasts < 3) {
+            forecasts[numForecasts].dayOfMonth = day;
+            forecasts[numForecasts].tempMin = item["main"]["temp_min"];
+            forecasts[numForecasts].tempMax = item["main"]["temp_max"];
+            forecasts[numForecasts].weatherMain = item["weather"][0]["main"].as<String>();
+            numForecasts++;
+            lastDay = day;
+          }
+        }
+      }
+      
+      weatherDataAvailable = (numForecasts > 0);
+      lastWeatherUpdate = millis();
+      Serial.printf("Clima: %d días\n", numForecasts);
+    }
+  }
+  http.end();
+}
+
+// ========== FUNCIONES DE ALARMA ==========
+
+void checkAlarm() {
+  if (!alarmEnabled) return;
+  
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return;
+  
+  if (timeinfo.tm_hour == alarmHour && timeinfo.tm_min == alarmMinute && !alarmTriggered) {
+    alarmTriggered = true;
+    alarmStartTime = millis();
+    Serial.println("🔔 ALARMA ACTIVADA!");
+  }
+  
+  if (alarmTriggered) {
+    #ifdef ALARM_DURATION
+    unsigned long duration = ALARM_DURATION;
+    #else
+    unsigned long duration = 60000;
+    #endif
+    
+    if (millis() - alarmStartTime >= duration) {
+      alarmTriggered = false;
+      Serial.println("Alarma finalizada (timeout)");
     }
     
-    // Procesar pronóstico por días
-    numForecasts = 0;
-    int lastDay = -1;
-    
-    JsonArray list = doc["list"].as<JsonArray>();
-    
-    for (JsonObject item : list) {
-      long dt = item["dt"];
-      struct tm* timeinfo = localtime((time_t*)&dt);
-      int day = timeinfo->tm_mday;
+    // Detener con botón de modo
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      alarmTriggered = false;
+      Serial.println("Alarma detenida por usuario");
+      delay(500);
+    }
+  }
+  
+  // Reset si cambia la hora
+  if (timeinfo.tm_hour != alarmHour) {
+    alarmTriggered = false;
+  }
+}
+
+void displayAlarm() {
+  unsigned long currentMillis = millis();
+  
+  #ifdef ALARM_BLINK_INTERVAL
+  unsigned long blinkInterval = ALARM_BLINK_INTERVAL;
+  #else
+  unsigned long blinkInterval = 500;
+  #endif
+  
+  if (currentMillis - lastAlarmBlink >= blinkInterval) {
+    lastAlarmBlink = currentMillis;
+    alarmBlinkState = !alarmBlinkState;
+  }
+  
+  display.clearDisplay();
+  
+  if (alarmBlinkState) {
+    // Pantalla llena invertida
+    display.fillRect(0, 0, 128, 32, SSD1306_WHITE);
+    display.setTextColor(SSD1306_BLACK);
+    display.setTextSize(2);
+    display.setCursor(10, 10);
+    display.print("ALARMA!");
+  }
+  
+  display.display();
+}
+
+void displayAlarmConfig() {
+  display.clearDisplay();
+  
+  // Título
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(20, 0);
+  display.print("CONFIG ALARMA");
+  
+  // Hora y Minuto
+  display.setTextSize(2);
+  display.setCursor(10, 12);
+  
+  // Hora
+  if (alarmConfigField == 0) {
+    display.fillRect(8, 10, 30, 18, SSD1306_WHITE);
+    display.setTextColor(SSD1306_BLACK);
+  } else {
+    display.setTextColor(SSD1306_WHITE);
+  }
+  display.printf("%02d", tempAlarmHour);
+  
+  // Dos puntos
+  display.setTextColor(SSD1306_WHITE);
+  display.print(":");
+  
+  // Minuto
+  if (alarmConfigField == 1) {
+    display.fillRect(56, 10, 30, 18, SSD1306_WHITE);
+    display.setTextColor(SSD1306_BLACK);
+  } else {
+    display.setTextColor(SSD1306_WHITE);
+  }
+  display.printf("%02d", tempAlarmMinute);
+  
+  // ON/OFF
+  display.setTextSize(1);
+  if (alarmConfigField == 2) {
+    display.fillRect(94, 11, 22, 10, SSD1306_WHITE);
+    display.setTextColor(SSD1306_BLACK);
+  } else {
+    display.setTextColor(SSD1306_WHITE);
+  }
+  display.setCursor(96, 13);
+  display.print(tempAlarmEnabled ? "ON" : "OFF");
+  
+  // Instrucción
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 24);
+  if (alarmConfigField == 3) {
+    display.print("SAVE? Short=YES");
+  } else {
+    display.print("S=+1 L=Next");
+  }
+  
+  display.display();
+}
+
+void checkAlarmButton() {
+  int buttonState = digitalRead(ALARM_BUTTON_PIN);
+  unsigned long currentMillis = millis();
+  
+  // Detectar inicio de presión
+  if (buttonState == LOW && alarmButtonPressStart == 0) {
+    alarmButtonPressStart = currentMillis;
+    alarmButtonLongPressDetected = false;
+  }
+  
+  // Detectar presión larga
+  if (buttonState == LOW && !alarmButtonLongPressDetected) {
+    if (currentMillis - alarmButtonPressStart >= BUTTON_LONG_PRESS_DURATION) {
+      alarmButtonLongPressDetected = true;
       
-      // Solo tomar un registro por día (mediodía aproximadamente)
-      if (day != lastDay && timeinfo->tm_hour >= 12 && timeinfo->tm_hour <= 15) {
-        if (numForecasts < 3) {
-          forecasts[numForecasts].dayOfMonth = day;
-          forecasts[numForecasts].tempMin = item["main"]["temp_min"];
-          forecasts[numForecasts].tempMax = item["main"]["temp_max"];
-          forecasts[numForecasts].weatherMain = item["weather"][0]["main"].as<String>();
-          forecasts[numForecasts].description = item["weather"][0]["description"].as<String>();
-          
-          Serial.printf("Día %d: %.1f/%.1f°C - %s\n", 
-                       day, 
-                       forecasts[numForecasts].tempMin,
-                       forecasts[numForecasts].tempMax,
-                       forecasts[numForecasts].weatherMain.c_str());
-          
-          numForecasts++;
-          lastDay = day;
+      if (alarmConfigMode) {
+        // En modo config: avanzar campo
+        alarmConfigField = (alarmConfigField + 1) % 4;
+        Serial.printf("Campo: %d\n", alarmConfigField);
+      } else {
+        // Entrar a modo config
+        alarmConfigMode = true;
+        alarmConfigField = 0;
+        tempAlarmHour = alarmHour;
+        tempAlarmMinute = alarmMinute;
+        tempAlarmEnabled = alarmEnabled;
+        Serial.println("▶ Modo config alarma");
+      }
+      delay(300);
+    }
+  }
+  
+  // Detectar liberación del botón
+  if (buttonState == HIGH && alarmButtonPressStart > 0) {
+    unsigned long pressDuration = currentMillis - alarmButtonPressStart;
+    
+    // Presión corta
+    if (pressDuration < BUTTON_LONG_PRESS_DURATION && !alarmButtonLongPressDetected) {
+      if (alarmConfigMode) {
+        if (alarmConfigField == 0) {
+          // Incrementar hora
+          tempAlarmHour = (tempAlarmHour + 1) % 24;
+          Serial.printf("Hora: %02d\n", tempAlarmHour);
+        } else if (alarmConfigField == 1) {
+          // Incrementar minuto
+          tempAlarmMinute = (tempAlarmMinute + 1) % 60;
+          Serial.printf("Minuto: %02d\n", tempAlarmMinute);
+        } else if (alarmConfigField == 2) {
+          // Toggle ON/OFF
+          tempAlarmEnabled = !tempAlarmEnabled;
+          Serial.println(tempAlarmEnabled ? "ON" : "OFF");
+        } else if (alarmConfigField == 3) {
+          // Guardar
+          alarmHour = tempAlarmHour;
+          alarmMinute = tempAlarmMinute;
+          alarmEnabled = tempAlarmEnabled;
+          alarmConfigMode = false;
+          Serial.printf("✓ Guardado: %02d:%02d %s\n", 
+            alarmHour, alarmMinute, alarmEnabled ? "ON" : "OFF");
         }
+        delay(200);
       }
     }
     
-    weatherDataAvailable = (numForecasts > 0);
-    lastWeatherUpdate = millis();
-    
-    Serial.printf("Pronóstico actualizado: %d días\n", numForecasts);
-    
-  } else {
-    Serial.printf("Error HTTP: %d\n", httpCode);
-    weatherDataAvailable = false;
+    alarmButtonPressStart = 0;
   }
-  
-  http.end();
+}
+
+// Íconos del clima para OLED
+void drawSunIcon(int16_t x, int16_t y) {
+  // Sol pequeño
+  display.fillCircle(x, y, 3, SSD1306_WHITE);
+  // Rayos
+  display.drawLine(x-5, y, x-7, y, SSD1306_WHITE);
+  display.drawLine(x+5, y, x+7, y, SSD1306_WHITE);
+  display.drawLine(x, y-5, x, y-7, SSD1306_WHITE);
+  display.drawLine(x, y+5, x, y+7, SSD1306_WHITE);
+}
+
+void drawCloudIcon(int16_t x, int16_t y) {
+  // Nube pequeña
+  display.fillCircle(x-2, y, 2, SSD1306_WHITE);
+  display.fillCircle(x, y-1, 2, SSD1306_WHITE);
+  display.fillCircle(x+2, y, 2, SSD1306_WHITE);
+  display.fillRect(x-2, y, 4, 2, SSD1306_WHITE);
+}
+
+void drawRainIcon(int16_t x, int16_t y) {
+  // Nube con lluvia
+  drawCloudIcon(x, y-2);
+  display.drawLine(x-2, y+2, x-2, y+4, SSD1306_WHITE);
+  display.drawLine(x, y+3, x, y+5, SSD1306_WHITE);
+  display.drawLine(x+2, y+2, x+2, y+4, SSD1306_WHITE);
 }
 
 void displayForecast() {
@@ -579,45 +626,49 @@ void displayForecast() {
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 12);
+    display.setCursor(10, 12);
     display.print("Sin datos clima");
     display.display();
     return;
   }
   
   display.clearDisplay();
+  
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
+  display.setCursor(30, 0);
+  display.print("PRONOSTICO");
   
-  // Mostrar los 3 días en columnas
-  // Pantalla: 128 px ancho, dividir en 3 = ~42 px por columna
-  
+  // Mostrar 3 días con íconos
   for (int i = 0; i < numForecasts && i < 3; i++) {
-    int16_t xPos = i * 43; // Posición X de cada columna
+    int16_t yPos = 10 + (i * 7);
     
-    // Día del mes (arriba)
-    display.setTextSize(1);
-    display.setCursor(xPos + 15, 0);
-    display.print(forecasts[i].dayOfMonth);
+    // Día
+    display.setCursor(0, yPos);
+    display.printf("%02d", forecasts[i].dayOfMonth);
     
-    // Ícono del clima (centro)
-    drawWeatherIcon(xPos + 20, 15, forecasts[i].weatherMain);
-    
-    // Temperaturas (abajo)
-    display.setTextSize(1);
-    char tempStr[8];
-    sprintf(tempStr, "%.0f", forecasts[i].tempMax);
-    display.setCursor(xPos + 2, 24);
-    display.print(tempStr);
-    
-    sprintf(tempStr, "%.0f", forecasts[i].tempMin);
-    display.setCursor(xPos + 26, 24);
-    display.print(tempStr);
-    
-    // Separador vertical (excepto el último)
-    if (i < 2) {
-      display.drawFastVLine(xPos + 42, 0, 32, SSD1306_WHITE);
+    // Ícono del clima
+    int16_t iconX = 20;
+    int16_t iconY = yPos + 3;
+    String weather = forecasts[i].weatherMain;
+    if (weather == "Clear") {
+      drawSunIcon(iconX, iconY);
+    } else if (weather == "Rain" || weather == "Drizzle") {
+      drawRainIcon(iconX, iconY);
+    } else if (weather == "Clouds") {
+      drawCloudIcon(iconX, iconY);
+    } else {
+      drawCloudIcon(iconX, iconY);
     }
+    
+    // Temperaturas
+    display.setCursor(32, yPos);
+    display.printf("%.0f", forecasts[i].tempMin);
+    display.drawCircle(48, yPos+1, 1, SSD1306_WHITE); // símbolo grados
+    
+    display.setCursor(52, yPos);
+    display.printf("%.0f", forecasts[i].tempMax);
+    display.drawCircle(68, yPos+1, 1, SSD1306_WHITE); // símbolo grados
   }
   
   display.display();
@@ -627,126 +678,109 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
   
-  Serial.println("=== RELOJ PERONISTA ===");
+  Serial.println("=== RELOJ PERONISTA OLED ===");
   
-  // Inicializar pantalla OLED
-  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    Serial.println("Error: No se encontró la pantalla SSD1306");
-    for (;;); // No continuar si no hay pantalla
+  // Inicializar OLED
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("ERROR: OLED no encontrado"));
+    for(;;);
   }
   
   display.clearDisplay();
-  display.setTextSize(1);
+  display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.print("Iniciando...");
+  display.setCursor(15, 0);
+  display.print("RELOJ");
+  display.setCursor(2, 18);
+  display.print("PERONISTA");
   display.display();
-  delay(1000);
+  delay(2000);
   
-  // Conectar WiFi
+  // WiFi
   display.clearDisplay();
-  display.setCursor(0, 0);
-  display.print("Conectando WiFi");
+  display.setTextSize(1);
+  display.setCursor(30, 12);
+  display.print("WiFi...");
   display.display();
   connectWiFi();
   
-  // Configurar hora
+  // NTP
   if (WiFi.status() == WL_CONNECTED) {
     display.clearDisplay();
-    display.setCursor(0, 0);
-    display.print("Sincronizando\nhora...");
+    display.setCursor(20, 12);
+    display.print("Sync hora...");
     display.display();
     setupTime();
   }
   
-  delay(1000);
+  randomSeed(esp_random());
   
-  // Inicializar generador de números aleatorios
-  randomSeed(analogRead(0));
-  
-  // Configurar botón con resistencia pull-up interna
+  // Botones
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(ALARM_BUTTON_PIN, INPUT_PULLUP);
   
-  // Inicializar sensores
+  // Sensores
   display.clearDisplay();
-  display.setCursor(0, 0);
-  display.print("Inic. sensores");
+  display.setCursor(20, 12);
+  display.print("Sensores...");
   display.display();
   
   if (aht.begin()) {
-    Serial.println("AHT10 detectado!");
+    Serial.println("AHT10 OK");
     sensorsAvailable = true;
-  } else {
-    Serial.println("AHT10 no encontrado");
   }
   
   if (bmp.begin()) {
-    Serial.println("BMP180 detectado!");
+    Serial.println("BMP180 OK");
     sensorsAvailable = true;
-  } else {
-    Serial.println("BMP180 no encontrado");
   }
   
   if (sensorsAvailable) {
-    // Primera lectura de sensores
     readSensors();
   }
   
-  // Obtener pronóstico del tiempo
+  // Clima
   if (WiFi.status() == WL_CONNECTED) {
     display.clearDisplay();
-    display.setCursor(0, 0);
-    display.print("Obteniendo\npronostico...");
+    display.setCursor(30, 12);
+    display.print("Clima...");
     display.display();
     fetchWeatherForecast();
   }
   
   delay(1000);
   
-  Serial.println("Sistema iniciado!");
-  Serial.println("Presiona el boton para cambiar modos:");
-  Serial.println("AUTO -> HORA -> FECHA -> EFEMERIDES -> TEMP -> HUM -> CLIMA -> FORECAST");
+  Serial.println("Sistema OK!");
+  Serial.println("Modos: AUTO->HORA->FECHA->EFEM->SENSORES->PRONOSTICO");
+  
+  if (alarmEnabled) {
+    Serial.printf("⏰ Alarma: %02d:%02d ON\n", alarmHour, alarmMinute);
+  } else {
+    Serial.println("⏰ Alarma: OFF");
+  }
 }
 
 void checkButton() {
-  // Leer botón (LOW = presionado porque usa pull-up)
-  if (digitalRead(BUTTON_PIN) == LOW && (millis() - lastButtonPress > DEBOUNCE_DELAY)) {
+  if (digitalRead(BUTTON_PIN) == LOW && (millis() - lastButtonPress > BUTTON_DEBOUNCE_DELAY)) {
     lastButtonPress = millis();
+    currentMode = (DisplayMode)((currentMode + 1) % 6);
     
-    // Cambiar al siguiente modo (8 modos total)
-    currentMode = (DisplayMode)((currentMode + 1) % 8);
-    
-    // Mostrar en serial qué modo se activó
-    Serial.print("Modo cambiado a: ");
+    Serial.print("Modo: ");
     switch(currentMode) {
-      case MODE_AUTO:
-        Serial.println("AUTOMATICO");
-        break;
-      case MODE_CLOCK_ONLY:
-        Serial.println("SOLO HORA");
-        break;
-      case MODE_DATE_ONLY:
-        Serial.println("SOLO FECHA");
-        break;
+      case MODE_AUTO: Serial.println("AUTO"); break;
+      case MODE_CLOCK_ONLY: Serial.println("HORA"); break;
+      case MODE_DATE_ONLY: Serial.println("FECHA"); break;
       case MODE_EPHEMERIS_ONLY:
-        Serial.println("SOLO EFEMERIDES");
-        marqueeX = SCREEN_WIDTH;
+        Serial.println("EFEMERIDES");
+        marqueeX = 128;
         currentEfemerideIndex = random(0, numEfemerides);
         break;
-      case MODE_TEMPERATURE:
-        Serial.println("SOLO TEMPERATURA");
+      case MODE_SENSORS: 
+        Serial.println("SENSORES"); 
+        lastSensorToggle = millis();
+        sensorDisplayIndex = 0;
         break;
-      case MODE_HUMIDITY:
-        Serial.println("SOLO HUMEDAD");
-        break;
-      case MODE_WEATHER:
-        Serial.println("MODO CLIMA (temp/hum)");
-        showingTemp = true;
-        break;
-      case MODE_FORECAST:
-        Serial.println("PRONOSTICO OPENWEATHER");
-        forecastDisplayIndex = 0;
-        break;
+      case MODE_FORECAST: Serial.println("PRONOSTICO"); break;
     }
   }
 }
@@ -754,45 +788,51 @@ void checkButton() {
 void loop() {
   unsigned long currentMillis = millis();
   
-  // Verificar botón (siempre primero)
+  // Siempre chequear alarma
+  checkAlarm();
+  
+  // Si alarma sonando, mostrar y salir
+  if (alarmTriggered) {
+    displayAlarm();
+    delay(50);
+    return;
+  }
+  
+  // Chequear botón de alarma
+  checkAlarmButton();
+  
+  // Si en modo config, mostrar y salir
+  if (alarmConfigMode) {
+    displayAlarmConfig();
+    delay(50);
+    return;
+  }
+  
+  // Botón de modo normal
   checkButton();
   
-  // Verificar si es momento de resincronizar la hora (cada 24 horas)
   if (currentMillis - lastTimeSync >= TIME_SYNC_INTERVAL) {
     resyncTime();
   }
   
-  // Verificar y ajustar brillo cada minuto
-  if (currentMillis - lastBrightnessCheck >= BRIGHTNESS_CHECK_INTERVAL) {
-    adjustBrightness();
-    lastBrightnessCheck = currentMillis;
-  }
-  
-  // Leer sensores periódicamente
   if (sensorsAvailable && (currentMillis - lastSensorRead >= SENSOR_READ_INTERVAL)) {
     readSensors();
     lastSensorRead = currentMillis;
   }
   
-  // Actualizar pronóstico del tiempo periódicamente
   if (currentMillis - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL) {
     fetchWeatherForecast();
   }
   
-  // Gestión de modos
   switch(currentMode) {
     case MODE_AUTO:
-      // Modo automático: alterna hora/fecha/efemérides
       if (currentMillis - lastEfemerideTime >= EFEMERIDE_INTERVAL) {
-        if (!showingEfemeride) {
-          showingEfemeride = true;
-          marqueeX = SCREEN_WIDTH;
+        showingEfemeride = !showingEfemeride;
+        if (showingEfemeride) {
+          marqueeX = 128;
           currentEfemerideIndex = random(0, numEfemerides);
-          lastEfemerideTime = currentMillis;
-        } else {
-          showingEfemeride = false;
-          lastEfemerideTime = currentMillis;
         }
+        lastEfemerideTime = currentMillis;
       }
       
       if (showingEfemeride) {
@@ -802,75 +842,53 @@ void loop() {
         if (!showingDate && (currentMillis - lastDateToggleTime >= DATE_SHOW_INTERVAL)) {
           showingDate = true;
           lastDateToggleTime = currentMillis;
-          displayDate();
         } else if (showingDate && (currentMillis - lastDateToggleTime >= DATE_DISPLAY_DURATION)) {
           showingDate = false;
           lastDateToggleTime = currentMillis;
-          displayTime();
+        }
+        
+        if (showingDate) {
+          displayDate();
         } else {
-          if (showingDate) {
-            displayDate();
-          } else {
-            displayTime();
-          }
+          displayTime();
         }
         delay(1000);
       }
       break;
       
     case MODE_CLOCK_ONLY:
-      // Solo muestra hora
       displayTime();
       delay(1000);
       break;
       
     case MODE_DATE_ONLY:
-      // Solo muestra fecha
       displayDate();
       delay(1000);
       break;
       
     case MODE_EPHEMERIS_ONLY:
-      // Solo muestra efemérides en marquesina
       displayEfemeride();
       delay(20);
       break;
       
-    case MODE_TEMPERATURE:
-      // Solo muestra temperatura
+    case MODE_SENSORS:
       if (sensorsAvailable) {
-        displayTemperature();
-      }
-      delay(1000);
-      break;
-      
-    case MODE_HUMIDITY:
-      // Solo muestra humedad
-      if (sensorsAvailable) {
-        displayHumidity();
-      }
-      delay(1000);
-      break;
-      
-    case MODE_WEATHER:
-      // Alterna entre temperatura y humedad
-      if (sensorsAvailable) {
-        if (currentMillis - lastWeatherToggle >= WEATHER_TOGGLE_INTERVAL) {
-          showingTemp = !showingTemp;
-          lastWeatherToggle = currentMillis;
+        // Alternar entre temperatura, humedad y presión cada 3 segundos
+        if (currentMillis - lastSensorToggle >= SENSOR_TOGGLE_INTERVAL) {
+          sensorDisplayIndex = (sensorDisplayIndex + 1) % 3;
+          lastSensorToggle = currentMillis;
         }
         
-        if (showingTemp) {
-          displayTemperature();
-        } else {
-          displayHumidity();
+        switch(sensorDisplayIndex) {
+          case 0: displayTemperature(); break;
+          case 1: displayHumidity(); break;
+          case 2: displayPressure(); break;
         }
       }
       delay(1000);
       break;
       
     case MODE_FORECAST:
-      // Muestra pronóstico de OpenWeather alternando datos
       displayForecast();
       delay(1000);
       break;
