@@ -1,0 +1,91 @@
+// Test simple para TFT ILI9341
+#include <Arduino.h>
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
+
+// Configuración de pines - AJUSTA ESTOS SEGÚN TU CONEXIÓN
+#define TFT_CS    15  // Chip Select - prueba con diferentes pines
+#define TFT_DC    2   // Data/Command
+#define TFT_RST   4   // Reset - prueba conectarlo a un GPIO
+
+// Si RESET está conectado a 3.3V, usa -1
+// #define TFT_RST   -1
+
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+  
+  Serial.println("=== TEST TFT ILI9341 ===");
+  Serial.println("Inicializando...");
+  
+  // Inicializar SPI explícitamente
+  SPI.begin();
+  
+  // Inicializar TFT
+  tft.begin();
+  
+  Serial.println("TFT inicializado");
+  
+  // Test 1: Pantalla negra
+  Serial.println("Test 1: Pantalla NEGRA");
+  tft.fillScreen(ILI9341_BLACK);
+  delay(2000);
+  
+  // Test 2: Pantalla roja
+  Serial.println("Test 2: Pantalla ROJA");
+  tft.fillScreen(ILI9341_RED);
+  delay(2000);
+  
+  // Test 3: Pantalla verde
+  Serial.println("Test 3: Pantalla VERDE");
+  tft.fillScreen(ILI9341_GREEN);
+  delay(2000);
+  
+  // Test 4: Pantalla azul
+  Serial.println("Test 4: Pantalla AZUL");
+  tft.fillScreen(ILI9341_BLUE);
+  delay(2000);
+  
+  // Test 5: Texto
+  Serial.println("Test 5: TEXTO");
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setCursor(0, 0);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(3);
+  tft.println("HOLA!");
+  tft.println("TFT");
+  tft.println("TEST");
+  delay(2000);
+  
+  // Test 6: Colores y formas
+  Serial.println("Test 6: FORMAS");
+  tft.fillScreen(ILI9341_BLACK);
+  tft.fillCircle(120, 160, 50, ILI9341_RED);
+  tft.fillRect(20, 20, 60, 60, ILI9341_GREEN);
+  tft.drawLine(0, 0, 240, 320, ILI9341_WHITE);
+  
+  Serial.println("Tests completados!");
+  Serial.println("\nConexiones esperadas:");
+  Serial.println("CS   -> GPIO " + String(TFT_CS));
+  Serial.println("DC   -> GPIO " + String(TFT_DC));
+  Serial.println("RST  -> GPIO " + String(TFT_RST) + " (o 3.3V si es -1)");
+  Serial.println("MOSI -> GPIO 23");
+  Serial.println("SCK  -> GPIO 18");
+  Serial.println("LED  -> 3.3V");
+  Serial.println("VCC  -> 3.3V o 5V");
+  Serial.println("GND  -> GND");
+}
+
+void loop() {
+  // Animación simple
+  static int color = 0;
+  uint16_t colors[] = {ILI9341_RED, ILI9341_GREEN, ILI9341_BLUE, 
+                       ILI9341_YELLOW, ILI9341_CYAN, ILI9341_MAGENTA};
+  
+  tft.fillScreen(colors[color]);
+  color = (color + 1) % 6;
+  delay(1000);
+}
