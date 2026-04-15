@@ -30,6 +30,7 @@ unsigned long lastDateToggleTime = 0;
 bool showingDate = false;
 
 int16_t marqueeX = 0;
+int16_t marqueeY = 240; // Empieza abajo de la pantalla
 unsigned long lastMarqueeUpdate = 0;
 const unsigned long MARQUEE_SPEED = 50;
 
@@ -132,6 +133,7 @@ const char* efemerides[] = {
 const int numEfemerides = sizeof(efemerides) / sizeof(efemerides[0]);
 
 // ========== FUNCIONES ==========
+void drawPeronSilhouette(); // Prototipo de función
 
 void connectWiFi() {
   Serial.print("Conectando WiFi");
@@ -210,19 +212,24 @@ void displayTime() {
   
   tft.fillScreen(COLOR_FONDO_AZUL);
   
-  // Hora GRANDE para pantalla 240x320
-  tft.setTextSize(7);
+  // Usar FONT8 (7-segment font grande) que SÍ escala bien
+  tft.setTextFont(8);
+  tft.setTextSize(1); // Reducido 80% desde size 3
   tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
   
   char timeStr[6];
   sprintf(timeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
   
-  // Centrar en pantalla (aproximado)
-  int16_t x = 15;
-  int16_t y = 130;
+  // FONT8 con size 1 es el tamaño base
+  int16_t x = 60;
+  int16_t y = 100;
   
   tft.setCursor(x, y);
   tft.print(timeStr);
+  
+  // Volver a fuente por defecto
+  tft.setTextFont(1);
+  tft.setTextSize(1);
 }
 
 void displayDate() {
@@ -231,14 +238,23 @@ void displayDate() {
   
   tft.fillScreen(COLOR_FONDO_AZUL);
   
-  tft.setTextSize(6);
+  // Usar FONT8 (7-segment font grande) que SÍ escala bien
+  tft.setTextFont(8);
+  tft.setTextSize(1); // Reducido 80% desde size 3
   tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
   
   char dateStr[12];
   sprintf(dateStr, "%02d/%02d", timeinfo.tm_mday, timeinfo.tm_mon + 1);
   
-  tft.setCursor(30, 140);
+  int16_t x = 80;
+  int16_t y = 100;
+  
+  tft.setCursor(x, y);
   tft.print(dateStr);
+  
+  // Volver a fuente por defecto
+  tft.setTextFont(1);
+  tft.setTextSize(1);
 }
 
 void displayEfemeride() {
@@ -246,24 +262,59 @@ void displayEfemeride() {
   
   if (currentMillis - lastMarqueeUpdate >= MARQUEE_SPEED) {
     lastMarqueeUpdate = currentMillis;
-    marqueeX -= 4; // Más rápido para pantalla grande
+    marqueeY -= 2; // Subir texto (efecto Star Wars)
   }
   
   tft.fillScreen(COLOR_FONDO_AZUL);
   
+  // Dibujar imagen de Perón de fondo (silueta simple)
+  drawPeronSilhouette();
+  
   String efemText = String(efemerides[currentEfemerideIndex]);
-  efemText.replace("\n", " ");
   
-  int16_t textWidth = efemText.length() * 12; // Texto más grande
+  // Dividir en líneas para efecto vertical
+  int lineHeight = 30;
+  int yPos = marqueeY;
   
-  if (marqueeX < -textWidth) {
-    marqueeX = 240;
+  // Resetear cuando el texto sale por arriba
+  if (marqueeY < -100) {
+    marqueeY = 240;
+    currentEfemerideIndex = random(0, numEfemerides);
   }
   
-  tft.setTextSize(2);
+  // Dibujar texto con efecto perspectiva (más grande abajo, más chico arriba)
+  tft.setTextSize(4);
   tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
-  tft.setCursor(marqueeX, 150);
+  
+  // Centrar texto
+  int16_t x = 10;
+  tft.setCursor(x, yPos);
   tft.print(efemText);
+  
+  // Línea adicional con año (si existe en el texto)
+  tft.setTextSize(3);
+  tft.setCursor(x + 20, yPos + 35);
+  tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
+}
+
+// Dibujar silueta simple de Perón
+void drawPeronSilhouette() {
+  // Silueta estilizada de cabeza/busto en el centro
+  int16_t centerX = 160;
+  int16_t centerY = 120;
+  
+  // Dibuja una silueta muy tenue para no interferir con el texto
+  uint16_t silhouetteColor = tft.color565(30, 50, 80); // Azul muy oscuro
+  
+  // Cabeza (círculo)
+  tft.fillCircle(centerX, centerY - 40, 25, silhouetteColor);
+  
+  // Hombros/pecho (trapecio simplificado)
+  tft.fillTriangle(centerX - 35, centerY, centerX + 35, centerY, centerX, centerY - 15, silhouetteColor);
+  tft.fillRect(centerX - 35, centerY, 70, 40, silhouetteColor);
+  
+  // Detalles de gorra militar
+  tft.fillRect(centerX - 28, centerY - 65, 56, 8, silhouetteColor);
 }
 
 void readSensors() {
@@ -281,48 +332,48 @@ void readSensors() {
 void displayTemperature() {
   tft.fillScreen(COLOR_FONDO_AZUL);
   
-  tft.setTextSize(3);
+  tft.setTextSize(4);
   tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
-  tft.setCursor(50, 80);
+  tft.setCursor(30, 30);
   tft.print("TEMPERATURA");
   
-  tft.setTextSize(6);
+  tft.setTextSize(9);
   tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
   char tempStr[10];
   sprintf(tempStr, "%.1fC", temperature);
-  tft.setCursor(40, 150);
+  tft.setCursor(30, 100);
   tft.print(tempStr);
 }
 
 void displayHumidity() {
   tft.fillScreen(COLOR_FONDO_AZUL);
   
-  tft.setTextSize(3);
+  tft.setTextSize(4);
   tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
-  tft.setCursor(60, 80);
+  tft.setCursor(70, 30);
   tft.print("HUMEDAD");
   
-  tft.setTextSize(6);
+  tft.setTextSize(9);
   tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
   char humStr[10];
   sprintf(humStr, "%.1f%%", humidity);
-  tft.setCursor(40, 150);
+  tft.setCursor(30, 100);
   tft.print(humStr);
 }
 
 void displayPressure() {
   tft.fillScreen(COLOR_FONDO_AZUL);
   
-  tft.setTextSize(3);
+  tft.setTextSize(4);
   tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
-  tft.setCursor(60, 80);
+  tft.setCursor(70, 30);
   tft.print("PRESION");
   
-  tft.setTextSize(5);
+  tft.setTextSize(8);
   tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
   char pressStr[15];
   sprintf(pressStr, "%.0fhPa", pressure);
-  tft.setCursor(20, 150);
+  tft.setCursor(10, 100);
   tft.print(pressStr);
 }
 
@@ -448,8 +499,8 @@ void displayAlarm() {
     // Pantalla llena invertida
     tft.fillScreen(TFT_WHITE);
     tft.setTextColor(TFT_BLACK);
-    tft.setTextSize(8);
-    tft.setCursor(20, 130);
+    tft.setTextSize(7);
+    tft.setCursor(10, 80);
     tft.print("ALARMA!");
   } else {
     tft.fillScreen(COLOR_FONDO_AZUL);
@@ -460,14 +511,14 @@ void displayAlarmConfig() {
   tft.fillScreen(COLOR_FONDO_AZUL);
   
   // Título
-  tft.setTextSize(3);
+  tft.setTextSize(4);
   tft.setTextColor(COLOR_PERONISTA_BLANCO);
-  tft.setCursor(20, 50);
+  tft.setCursor(10, 20);
   tft.print("CONFIG ALARMA");
   
   // Hora y Minuto
-  tft.setTextSize(7);
-  tft.setCursor(30, 130);
+  tft.setTextSize(10);
+  tft.setCursor(20, 80);
   
   // Hora
   if (alarmConfigField == 0) {
@@ -490,19 +541,19 @@ void displayAlarmConfig() {
   tft.printf("%02d", tempAlarmMinute);
   
   // ON/OFF
-  tft.setTextSize(4);
+  tft.setTextSize(6);
   if (alarmConfigField == 2) {
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
   } else {
     tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
   }
-  tft.setCursor(70, 220);
+  tft.setCursor(80, 170);
   tft.print(tempAlarmEnabled ? " ON " : " OFF");
   
   // Instrucción
   tft.setTextSize(2);
   tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
-  tft.setCursor(10, 280);
+  tft.setCursor(10, 215);
   if (alarmConfigField == 3) {
     tft.print("SAVE? Corto=SI");
   } else {
@@ -578,62 +629,66 @@ void checkAlarmButton() {
   }
 }
 
-// Íconos del clima para OLED
+// Íconos del clima más grandes
 void drawSunIcon(int16_t x, int16_t y) {
-  // Sol pequeño
-  tft.fillCircle(x, y, 3, TFT_WHITE);
+  // Sol más grande
+  tft.fillCircle(x, y, 8, TFT_YELLOW);
   // Rayos
-  tft.drawLine(x-5, y, x-7, y, TFT_WHITE);
-  tft.drawLine(x+5, y, x+7, y, TFT_WHITE);
-  tft.drawLine(x, y-5, x, y-7, TFT_WHITE);
-  tft.drawLine(x, y+5, x, y+7, TFT_WHITE);
+  for (int i = 0; i < 8; i++) {
+    float angle = i * 45 * PI / 180;
+    int x1 = x + cos(angle) * 12;
+    int y1 = y + sin(angle) * 12;
+    int x2 = x + cos(angle) * 16;
+    int y2 = y + sin(angle) * 16;
+    tft.drawLine(x1, y1, x2, y2, TFT_YELLOW);
+  }
 }
 
 void drawCloudIcon(int16_t x, int16_t y) {
-  // Nube pequeña
-  tft.fillCircle(x-2, y, 2, TFT_WHITE);
-  tft.fillCircle(x, y-1, 2, TFT_WHITE);
-  tft.fillCircle(x+2, y, 2, TFT_WHITE);
-  tft.fillRect(x-2, y, 4, 2, TFT_WHITE);
+  // Nube más grande
+  tft.fillCircle(x-6, y, 5, TFT_WHITE);
+  tft.fillCircle(x, y-3, 6, TFT_WHITE);
+  tft.fillCircle(x+6, y, 5, TFT_WHITE);
+  tft.fillRect(x-8, y, 16, 6, TFT_WHITE);
 }
 
 void drawRainIcon(int16_t x, int16_t y) {
-  // Nube con lluvia
-  drawCloudIcon(x, y-2);
-  tft.drawLine(x-2, y+2, x-2, y+4, TFT_WHITE);
-  tft.drawLine(x, y+3, x, y+5, TFT_WHITE);
-  tft.drawLine(x+2, y+2, x+2, y+4, TFT_WHITE);
+  // Nube con lluvia más grande
+  drawCloudIcon(x, y-5);
+  tft.drawLine(x-6, y+5, x-6, y+10, TFT_CYAN);
+  tft.drawLine(x, y+6, x, y+11, TFT_CYAN);
+  tft.drawLine(x+6, y+5, x+6, y+10, TFT_CYAN);
 }
 
 void displayForecast() {
   if (!weatherDataAvailable || numForecasts == 0) {
     tft.fillScreen(COLOR_FONDO_AZUL);
-    tft.setTextSize(1);
+    tft.setTextSize(3);
     tft.setTextColor(TFT_WHITE);
-    tft.setCursor(10, 12);
+    tft.setCursor(30, 100);
     tft.print("Sin datos clima");
-    ;
     return;
   }
   
   tft.fillScreen(COLOR_FONDO_AZUL);
   
-  tft.setTextSize(1);
+  tft.setTextSize(4);
   tft.setTextColor(TFT_WHITE);
-  tft.setCursor(30, 0);
+  tft.setCursor(50, 10);
   tft.print("PRONOSTICO");
   
-  // Mostrar 3 días con íconos
+  // Mostrar 3 días con íconos más grandes
   for (int i = 0; i < numForecasts && i < 3; i++) {
-    int16_t yPos = 10 + (i * 7);
+    int16_t yPos = 60 + (i * 50);
     
     // Día
-    tft.setCursor(0, yPos);
+    tft.setTextSize(4);
+    tft.setCursor(10, yPos);
     tft.printf("%02d", forecasts[i].dayOfMonth);
     
     // Ícono del clima
-    int16_t iconX = 20;
-    int16_t iconY = yPos + 3;
+    int16_t iconX = 80;
+    int16_t iconY = yPos + 15;
     String weather = forecasts[i].weatherMain;
     if (weather == "Clear") {
       drawSunIcon(iconX, iconY);
@@ -646,16 +701,15 @@ void displayForecast() {
     }
     
     // Temperaturas
-    tft.setCursor(32, yPos);
+    tft.setTextSize(3);
+    tft.setCursor(120, yPos);
     tft.printf("%.0f", forecasts[i].tempMin);
-    tft.drawCircle(48, yPos+1, 1, TFT_WHITE); // símbolo grados
+    tft.drawCircle(165, yPos+5, 2, TFT_WHITE); // símbolo grados
     
-    tft.setCursor(52, yPos);
+    tft.setCursor(180, yPos);
     tft.printf("%.0f", forecasts[i].tempMax);
-    tft.drawCircle(68, yPos+1, 1, TFT_WHITE); // símbolo grados
+    tft.drawCircle(225, yPos+5, 2, TFT_WHITE); // símbolo grados
   }
-  
-  ;
 }
 
 void setup() {
@@ -765,7 +819,7 @@ void checkButton() {
       case MODE_DATE_ONLY: Serial.println("FECHA"); break;
       case MODE_EPHEMERIS_ONLY:
         Serial.println("EFEMERIDES");
-        marqueeX = 128;
+        marqueeY = 240; // Reset posición vertical
         currentEfemerideIndex = random(0, numEfemerides);
         break;
       case MODE_SENSORS: 
@@ -822,7 +876,7 @@ void loop() {
       if (currentMillis - lastEfemerideTime >= EFEMERIDE_INTERVAL) {
         showingEfemeride = !showingEfemeride;
         if (showingEfemeride) {
-          marqueeX = 128;
+          marqueeY = 240; // Reset posición vertical
           currentEfemerideIndex = random(0, numEfemerides);
         }
         lastEfemerideTime = currentMillis;
