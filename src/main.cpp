@@ -240,11 +240,11 @@ void displayDate() {
   
   // Usar FONT8 (7-segment font grande) que SÍ escala bien
   tft.setTextFont(8);
-  tft.setTextSize(1); // Reducido 80% desde size 3
+  tft.setTextSize(1);
   tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
   
-  char dateStr[12];
-  sprintf(dateStr, "%02d/%02d", timeinfo.tm_mday, timeinfo.tm_mon + 1);
+  char dateStr[16]; // Buffer más grande para evitar overflow
+  sprintf(dateStr, "%02d %02d", timeinfo.tm_mday, timeinfo.tm_mon + 1);
   
   int16_t x = 80;
   int16_t y = 100;
