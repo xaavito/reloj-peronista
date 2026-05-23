@@ -219,15 +219,17 @@ void displayTime() {
   char timeStr[6];
   sprintf(timeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
   
-  // Pantalla en horizontal: 320x240
-  tft.setTextFont(8);
+  // Pantalla en vertical: 240x320
+  // Usar FONT4 que es más compacta que FONT8
+  tft.setTextFont(4);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(1);  // Size 1 para que quepa todo
+  tft.setTextSize(3);  // Tamaño 3x
   
-  // FONT8 size 1 es más ancho de lo esperado
-  // Mover bastante a la izquierda para que quepa todo
-  int16_t x = 60;  // Más a la izquierda para evitar corte
-  int16_t y = 107;  // Centrado vertical
+  // Con size 3, tamaño balanceado
+  // FONT4 base ~14px ancho x ~26px alto por carácter
+  // Size 3 = ~42px ancho x ~78px alto por carácter
+  int16_t x = 20;  // Margen del borde
+  int16_t y = 120; // Centrado vertical
   
   tft.setCursor(x, y);
   tft.print(timeStr);
@@ -732,9 +734,9 @@ void setup() {
   tft.init();
   Serial.println("TFT inicializado");
   
-  // Rotación horizontal (landscape)
-  tft.setRotation(1); // Landscape: 1=90° (horizontal), 3=270° (horizontal invertido)
-  Serial.println("Rotacion configurada: HORIZONTAL");
+  // Rotación vertical (portrait)
+  tft.setRotation(0); // Portrait: 0=0° (vertical), 2=180° (vertical invertido)
+  Serial.println("Rotacion configurada: VERTICAL");
   
   tft.fillScreen(TFT_BLACK);
   tft.setTextSize(4);
