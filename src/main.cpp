@@ -205,27 +205,29 @@ void resyncTime() {
 void displayTime() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
-    tft.fillScreen(COLOR_FONDO_AZUL);
+    tft.fillScreen(TFT_BLACK);
     tft.setTextSize(2);
     tft.setTextColor(TFT_WHITE);
-    tft.setCursor(40, 150);
+    tft.setCursor(40, 100);
     tft.print("Error hora");
     return;
   }
   
-  tft.fillScreen(COLOR_FONDO_AZUL);
-  
-  // Usar FONT8 (7-segment font grande) que SÍ escala bien
-  tft.setTextFont(8);
-  tft.setTextSize(1); // Reducido 80% desde size 3
-  tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
+  // Fondo negro
+  tft.fillScreen(TFT_BLACK);
   
   char timeStr[6];
   sprintf(timeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
   
-  // FONT8 con size 1 es el tamaño base
-  int16_t x = 60;
-  int16_t y = 100;
+  // Pantalla en horizontal: 320x240
+  tft.setTextFont(8);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextSize(1);  // Size 1 para que quepa todo
+  
+  // FONT8 size 1 es más ancho de lo esperado
+  // Mover bastante a la izquierda para que quepa todo
+  int16_t x = 60;  // Más a la izquierda para evitar corte
+  int16_t y = 107;  // Centrado vertical
   
   tft.setCursor(x, y);
   tft.print(timeStr);
@@ -239,12 +241,12 @@ void displayDate() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) return;
   
-  tft.fillScreen(COLOR_FONDO_AZUL);
+  tft.fillScreen(TFT_BLACK);
   
   // Usar FONT8 (7-segment font grande) que SÍ escala bien
   tft.setTextFont(8);
   tft.setTextSize(1);
-  tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   
   char dateStr[16]; // Buffer más grande para evitar overflow
   sprintf(dateStr, "%02d %02d", timeinfo.tm_mday, timeinfo.tm_mon + 1);
@@ -268,10 +270,7 @@ void displayEfemeride() {
     marqueeY -= 2; // Subir texto (efecto Star Wars)
   }
   
-  tft.fillScreen(COLOR_FONDO_AZUL);
-  
-  // Dibujar imagen de Perón de fondo (silueta simple)
-  drawPeronSilhouette();
+  tft.fillScreen(TFT_BLACK);
   
   String efemText = String(efemerides[currentEfemerideIndex]);
   
@@ -285,19 +284,14 @@ void displayEfemeride() {
     currentEfemerideIndex = random(0, numEfemerides);
   }
   
-  // Dibujar texto con efecto perspectiva (más grande abajo, más chico arriba)
+  // Dibujar texto con efecto blanco sobre negro
   tft.setTextSize(4);
-  tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   
   // Centrar texto
   int16_t x = 10;
   tft.setCursor(x, yPos);
   tft.print(efemText);
-  
-  // Línea adicional con año (si existe en el texto)
-  tft.setTextSize(3);
-  tft.setCursor(x + 20, yPos + 35);
-  tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
 }
 
 // Dibujar silueta simple de Perón
@@ -333,15 +327,15 @@ void readSensors() {
 }
 
 void displayTemperature() {
-  tft.fillScreen(COLOR_FONDO_AZUL);
+  tft.fillScreen(TFT_BLACK);
   
   tft.setTextSize(4);
-  tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setCursor(30, 30);
   tft.print("TEMPERATURA");
   
   tft.setTextSize(9);
-  tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   char tempStr[10];
   sprintf(tempStr, "%.1fC", temperature);
   tft.setCursor(30, 100);
@@ -349,15 +343,15 @@ void displayTemperature() {
 }
 
 void displayHumidity() {
-  tft.fillScreen(COLOR_FONDO_AZUL);
+  tft.fillScreen(TFT_BLACK);
   
   tft.setTextSize(4);
-  tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setCursor(70, 30);
   tft.print("HUMEDAD");
   
   tft.setTextSize(9);
-  tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   char humStr[10];
   sprintf(humStr, "%.1f%%", humidity);
   tft.setCursor(30, 100);
@@ -365,15 +359,15 @@ void displayHumidity() {
 }
 
 void displayPressure() {
-  tft.fillScreen(COLOR_FONDO_AZUL);
+  tft.fillScreen(TFT_BLACK);
   
   tft.setTextSize(4);
-  tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setCursor(70, 30);
   tft.print("PRESION");
   
   tft.setTextSize(8);
-  tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   char pressStr[15];
   sprintf(pressStr, "%.0fhPa", pressure);
   tft.setCursor(10, 100);
@@ -502,7 +496,7 @@ void displayAlarm() {
   }
   
   if (alarmBlinkState) {
-    // Pantalla llena invertida
+    // Pantalla llena invertida para alarma
     tft.fillScreen(TFT_WHITE);
     tft.setTextColor(TFT_BLACK);
     tft.setTextSize(7);
@@ -511,18 +505,18 @@ void displayAlarm() {
     // Activar buzzer
     digitalWrite(BUZZER_PIN, HIGH);
   } else {
-    tft.fillScreen(COLOR_FONDO_AZUL);
+    tft.fillScreen(TFT_BLACK);
     // Apagar buzzer
     digitalWrite(BUZZER_PIN, LOW);
   }
 }
 
 void displayAlarmConfig() {
-  tft.fillScreen(COLOR_FONDO_AZUL);
+  tft.fillScreen(TFT_BLACK);
   
   // Título
   tft.setTextSize(4);
-  tft.setTextColor(COLOR_PERONISTA_BLANCO);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setCursor(10, 20);
   tft.print("CONFIG ALARMA");
   
@@ -534,19 +528,19 @@ void displayAlarmConfig() {
   if (alarmConfigField == 0) {
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
   } else {
-    tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
   }
   tft.printf("%02d", tempAlarmHour);
   
   // Dos puntos
-  tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.print(":");
   
   // Minuto
   if (alarmConfigField == 1) {
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
   } else {
-    tft.setTextColor(COLOR_PERONISTA_CELESTE, COLOR_FONDO_AZUL);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
   }
   tft.printf("%02d", tempAlarmMinute);
   
@@ -555,14 +549,14 @@ void displayAlarmConfig() {
   if (alarmConfigField == 2) {
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
   } else {
-    tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
   }
   tft.setCursor(80, 170);
   tft.print(tempAlarmEnabled ? " ON " : " OFF");
   
   // Instrucción
   tft.setTextSize(2);
-  tft.setTextColor(COLOR_PERONISTA_BLANCO, COLOR_FONDO_AZUL);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setCursor(10, 215);
   if (alarmConfigField == 3) {
     tft.print("SAVE? Corto=SI");
@@ -672,18 +666,18 @@ void drawRainIcon(int16_t x, int16_t y) {
 
 void displayForecast() {
   if (!weatherDataAvailable || numForecasts == 0) {
-    tft.fillScreen(COLOR_FONDO_AZUL);
+    tft.fillScreen(TFT_BLACK);
     tft.setTextSize(3);
-    tft.setTextColor(TFT_WHITE);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setCursor(30, 100);
     tft.print("Sin datos clima");
     return;
   }
   
-  tft.fillScreen(COLOR_FONDO_AZUL);
+  tft.fillScreen(TFT_BLACK);
   
   tft.setTextSize(4);
-  tft.setTextColor(TFT_WHITE);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setCursor(50, 10);
   tft.print("PRONOSTICO");
   
@@ -742,9 +736,9 @@ void setup() {
   tft.setRotation(1); // Landscape: 1=90° (horizontal), 3=270° (horizontal invertido)
   Serial.println("Rotacion configurada: HORIZONTAL");
   
-  tft.fillScreen(COLOR_FONDO_AZUL);
+  tft.fillScreen(TFT_BLACK);
   tft.setTextSize(4);
-  tft.setTextColor(COLOR_PERONISTA_CELESTE);
+  tft.setTextColor(TFT_WHITE);
   tft.setCursor(40, 120);
   tft.print("RELOJ");
   tft.setCursor(20, 160);
@@ -753,9 +747,9 @@ void setup() {
   delay(2000);
   
   // WiFi
-  tft.fillScreen(COLOR_FONDO_AZUL);
+  tft.fillScreen(TFT_BLACK);
   tft.setTextSize(3);
-  tft.setTextColor(COLOR_PERONISTA_BLANCO);
+  tft.setTextColor(TFT_WHITE);
   tft.setCursor(60, 150);
   tft.print("WiFi...");
   
@@ -763,7 +757,7 @@ void setup() {
   
   // NTP
   if (WiFi.status() == WL_CONNECTED) {
-    tft.fillScreen(COLOR_FONDO_AZUL);
+    tft.fillScreen(TFT_BLACK);
     tft.setCursor(20, 150);
     tft.print("Sync hora...");
     
@@ -782,7 +776,7 @@ void setup() {
   Serial.println("Buzzer configurado en GPIO 25");
   
   // Sensores
-  tft.fillScreen(COLOR_FONDO_AZUL);
+  tft.fillScreen(TFT_BLACK);
   tft.setCursor(30, 150);
   tft.print("Sensores...");
   
@@ -803,7 +797,7 @@ void setup() {
   
   // Clima
   if (WiFi.status() == WL_CONNECTED) {
-    tft.fillScreen(COLOR_FONDO_AZUL);
+    tft.fillScreen(TFT_BLACK);
     tft.setCursor(60, 150);
     tft.print("Clima...");
     
