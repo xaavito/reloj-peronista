@@ -56,6 +56,9 @@ bool alarmBlinkState = false;
 const int BUTTON_PIN = 27;           // Botón cambio de modo (GPIO 27 disponible - no interfiere con HSPI)
 const int ALARM_BUTTON_PIN = 4;      // Botón configuración alarma
 
+// Buzzer
+const int BUZZER_PIN = 25;           // Buzzer activo 5V para alarma (GPIO 25)
+
 // Configuración de alarma
 bool alarmConfigMode = false;
 int alarmConfigField = 0;             // 0=hora, 1=minuto, 2=on/off, 3=guardar
@@ -464,12 +467,14 @@ void checkAlarm() {
     
     if (millis() - alarmStartTime >= duration) {
       alarmTriggered = false;
+      digitalWrite(BUZZER_PIN, LOW);  // Apagar buzzer
       Serial.println("Alarma finalizada (timeout)");
     }
     
     // Detener con botón de modo
     if (digitalRead(BUTTON_PIN) == LOW) {
       alarmTriggered = false;
+      digitalWrite(BUZZER_PIN, LOW);  // Apagar buzzer
       Serial.println("Alarma detenida por usuario");
       delay(500);
     }
@@ -478,6 +483,7 @@ void checkAlarm() {
   // Reset si cambia la hora
   if (timeinfo.tm_hour != alarmHour) {
     alarmTriggered = false;
+    digitalWrite(BUZZER_PIN, LOW);  // Apagar buzzer
   }
 }
 
@@ -502,8 +508,12 @@ void displayAlarm() {
     tft.setTextSize(7);
     tft.setCursor(10, 80);
     tft.print("ALARMA!");
+    // Activar buzzer
+    digitalWrite(BUZZER_PIN, HIGH);
   } else {
     tft.fillScreen(COLOR_FONDO_AZUL);
+    // Apagar buzzer
+    digitalWrite(BUZZER_PIN, LOW);
   }
 }
 
@@ -765,6 +775,11 @@ void setup() {
   // Botones
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(ALARM_BUTTON_PIN, INPUT_PULLUP);
+  
+  // Buzzer
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);  // Iniciar apagado
+  Serial.println("Buzzer configurado en GPIO 25");
   
   // Sensores
   tft.fillScreen(COLOR_FONDO_AZUL);

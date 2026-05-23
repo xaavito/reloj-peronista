@@ -54,7 +54,7 @@ Este documento describe el cableado completo del Reloj Peronista incluyendo:
 
 | **Botón 4 Pines** | **Pin ESP32** | **Cable** | **Descripción** |
 |-------------------|---------------|-----------|-----------------|
-| Pin 1 o 2         | **GPIO 15**   | Cualquier | Señal del botón |
+| Pin 1 o 2         | **GPIO 27**   | Cualquier | Señal del botón |
 | Pin 3 o 4         | **GND**       | Negro     | Tierra |
 
 **Funcionalidad:**
@@ -63,12 +63,24 @@ Este documento describe el cableado completo del Reloj Peronista incluyendo:
 
 ---
 
-## ⏰ Botón de Alarma (NUEVO)
+## ⏰ Botón de Alarma
 
 | **Botón 4 Pines** | **Pin ESP32** | **Cable** | **Descripción** |
 |-------------------|---------------|-----------|-----------------|
 | Pin 1 o 2         | **GPIO 4**    | Cualquier | Señal del botón |
 | Pin 3 o 4         | **GND**       | Negro     | Tierra |
+
+---
+
+## 🔊 Buzzer Activo 5V (NUEVO)
+
+| **Pin Buzzer** | **Pin ESP32** | **Cable** | **Descripción** |
+|----------------|---------------|-----------|-----------------|
+| **+** (VCC)    | **GPIO 25**   | Rojo      | Señal control |
+| **-** (GND)    | **GND**       | Negro     | Tierra |
+
+**NOTA**: Es un buzzer ACTIVO de 5V. Se controla con señal digital (HIGH/LOW).
+El ESP32 da 3.3V en GPIO pero es suficiente para activar el buzzer.
 
 ### 🎮 Uso del Botón de Alarma:
 
@@ -110,7 +122,7 @@ Este documento describe el cableado completo del Reloj Peronista incluyendo:
 - Pantalla parpadea en ROJO
 - Texto grande "ALARMA"
 - Duración: 1 minuto (configurable en config.h)
-- **Para detener**: Presión corta en botón de modo (GPIO 15)
+- **Para detener**: Presión corta en botón de modo (GPIO 27)
 
 ---
 
@@ -126,24 +138,25 @@ Este documento describe el cableado completo del Reloj Peronista incluyendo:
                     │            GPIO17├────► RES (Pantalla)
                     │            GPIO16├────► DC (Pantalla)
                     │            GPIO22├────► SCL (I2C Sensores)
-                    │            GPIO21├────► SDA (I2C Sensores)
-   Botón Modo ◄─────┤ GPIO15          │
- Botón Alarma ◄─────┤ GPIO 4          │
+                     │            GPIO21├────► SDA (I2C Sensores)
+                     │            GPIO25├────► Buzzer (+)
+                     │            GPIO27├────► Botón Modo
+  Botón Alarma ◄─────┤ GPIO 4          │
                     │                 │
                     └─────────────────┘
 
-Pantalla ST7789:        Sensores I2C:        Botones:
+Pantalla ILI9341:      Sensores I2C:        Botones:
 GND ← GND              AHT10 + BMP180        ┌───┐
-VCC ← 3.3V             VCC ← 3.3V            │ ⚬ │← GPIO 15 (Modo)
+VCC ← 3.3V             VCC ← 3.3V            │ ⚬ │← GPIO 27 (Modo)
 SCL ← GPIO 18          GND ← GND             │   │
 SDA ← GPIO 23          SCL ← GPIO 22         │ ⚬ │← GND
 RES ← GPIO 17          SDA ← GPIO 21         └───┘
 DC  ← GPIO 16
 BLK ← 3.3V                                   ┌───┐
                                              │ ⚬ │← GPIO 4 (Alarma)
-                                             │   │
-                                             │ ⚬ │← GND
-                                             └───┘
+                      Buzzer Activo:         │   │
+                      + ← GPIO 25            │ ⚬ │← GND
+                      - ← GND                └───┘
 ```
 
 ---
@@ -204,8 +217,12 @@ BLK ← 3.3V                                   ┌───┐
 - [ ] BMP180 SDA → GPIO 21 (compartido)
 
 ### Botones:
-- [ ] Botón Modo: 1 pin → GPIO 15, otro → GND
+- [ ] Botón Modo: 1 pin → GPIO 27, otro → GND
 - [ ] Botón Alarma: 1 pin → GPIO 4, otro → GND
+
+### Buzzer:
+- [ ] Buzzer + → GPIO 25
+- [ ] Buzzer - → GND
 
 ### Software:
 - [ ] config.h editado con WiFi y API key
@@ -223,7 +240,8 @@ BLK ← 3.3V                                   ┌───┐
 ### 🔌 Buses:
 - **SPI (Pantalla)**: GPIO 18, 23, 17, 16
 - **I2C (Sensores)**: GPIO 22, 21
-- **GPIO Disponibles**: 4, 15 para botones
+- **GPIO Botones**: GPIO 27 (Modo), GPIO 4 (Alarma)
+- **GPIO Buzzer**: GPIO 25
 
 ### 🎛️ Resistencias Pull-up:
 - **NO necesarias** en botones (ESP32 tiene internas)
