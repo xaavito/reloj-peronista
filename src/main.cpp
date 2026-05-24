@@ -14,6 +14,7 @@
 #include <ArduinoJson.h>
 #include "time.h"
 #include "config.h"
+#include "peron_image.h"
 
 // Inicializar display TFT con TFT_eSPI
 TFT_eSPI tft = TFT_eSPI();        // Configuración viene de platformio.ini build_flags
@@ -371,35 +372,62 @@ void displayDate() {
 }
 
 void displayEfemeride() {
-  unsigned long currentMillis = millis();
-  
-  if (currentMillis - lastMarqueeUpdate >= MARQUEE_SPEED) {
-    lastMarqueeUpdate = currentMillis;
-    marqueeY -= 2; // Subir texto (efecto Star Wars)
-  }
-  
   tft.fillScreen(TFT_BLACK);
   
+  // ========== MOSTRAR IMAGEN DE PERÓN ==========
+  // Centrar imagen (101x140 en pantalla 240x320)
+  int16_t imgX = (240 - PERON_IMG_WIDTH) / 2;  // Centrado horizontal
+  int16_t imgY = 20;  // Arriba
+  
+  // Dibujar imagen desde PROGMEM
+  tft.pushImage(imgX, imgY, PERON_IMG_WIDTH, PERON_IMG_HEIGHT, peron_image);
+  
+  // ========== MOSTRAR EFEMÉRIDE DEBAJO ==========
   String efemText = String(efemerides[currentEfemerideIndex]);
   
-  // Dividir en líneas para efecto vertical
-  int lineHeight = 30;
-  int yPos = marqueeY;
+  // Separar fecha y descripción
+  int separatorPos = efemText.indexOf(' ', 10);
+  String fecha = efemText.substring(0, 10);  // "DD/MM/AAAA"
+  String descripcion = efemText.substring(11);  // Resto del texto
   
-  // Resetear cuando el texto sale por arriba
-  if (marqueeY < -100) {
-    marqueeY = 240;
-    currentEfemerideIndex = random(0, numEfemerides);
+  // Posición del texto debajo de la imagen
+  int16_t textY = imgY + PERON_IMG_HEIGHT + 20;
+  
+  // Mostrar fecha
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setCursor(40, textY);
+  tft.print(fecha);
+  
+  // Mostrar descripción (ajustar para que quepa)
+  tft.setTextSize(2);
+  tft.setCursor(10, textY + 25);
+  
+  // Si el texto es muy largo, dividirlo en líneas
+  if (descripcion.length() > 28) {
+    // Primera línea
+    String linea1 = descripcion.substring(0, 28);
+    tft.print(linea1);
+    
+    // Segunda línea si hay más texto
+    if (descripcion.length() > 28) {
+      String linea2 = descripcion.substring(28);
+      if (linea2.length() > 28) {
+        linea2 = linea2.substring(0, 25) + "...";
+      }
+      tft.setCursor(10, textY + 45);
+      tft.print(linea2);
+    }
+  } else {
+    tft.print(descripcion);
   }
   
-  // Dibujar texto con efecto blanco sobre negro
-  tft.setTextSize(4);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  
-  // Centrar texto
-  int16_t x = 10;
-  tft.setCursor(x, yPos);
-  tft.print(efemText);
+  // Cambiar efeméride cada 10 segundos
+  static unsigned long lastEfemChange = 0;
+  if (millis() - lastEfemChange >= 10000) {
+    currentEfemerideIndex = random(0, numEfemerides);
+    lastEfemChange = millis();
+  }
 }
 
 // Dibujar silueta simple de Perón
