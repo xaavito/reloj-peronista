@@ -202,7 +202,7 @@ void resyncTime() {
   }
 }
 
-void displayTime() {
+void displayAllInfo() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
     tft.fillScreen(TFT_BLACK);
@@ -216,27 +216,100 @@ void displayTime() {
   // Fondo negro
   tft.fillScreen(TFT_BLACK);
   
+  // ========== HORA ARRIBA (grande) ==========
   char timeStr[6];
   sprintf(timeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
   
-  // Pantalla en vertical: 240x320
-  // Usar FONT4 que es más compacta que FONT8
   tft.setTextFont(4);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextSize(3);  // Tamaño 3x
-  
-  // Con size 3, tamaño balanceado
-  // FONT4 base ~14px ancho x ~26px alto por carácter
-  // Size 3 = ~42px ancho x ~78px alto por carácter
-  int16_t x = 20;  // Margen del borde
-  int16_t y = 120; // Centrado vertical
-  
-  tft.setCursor(x, y);
+  tft.setCursor(20, 10);  // Lo más arriba posible
   tft.print(timeStr);
+  
+  // ========== FECHA (más chica) ==========
+  tft.setTextFont(2);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  char dateStr[16];
+  sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+  tft.setCursor(20, 95);
+  tft.print(dateStr);
+  
+  // ========== SENSORES (mismo tamaño que fecha) ==========
+  if (sensorsAvailable) {
+    tft.setTextFont(2);
+    tft.setTextSize(2);
+    
+    // Temperatura
+    tft.setCursor(10, 130);
+    tft.printf("T:%.1fC", temperature);
+    
+    // Humedad
+    tft.setCursor(10, 155);
+    tft.printf("H:%.1f%%", humidity);
+    
+    // Presión
+    tft.setCursor(10, 180);
+    tft.printf("P:%.0fhPa", pressure);
+  }
+  
+  // ========== PRONÓSTICO (3 días con íconos) ==========
+  if (weatherDataAvailable && numForecasts > 0) {
+    tft.setTextFont(1);
+    tft.setTextSize(1);
+    tft.setCursor(10, 208);
+    tft.print("Pronostico:");
+    
+    // Mostrar hasta 3 días de forma compacta con íconos
+    for (int i = 0; i < numForecasts && i < 3; i++) {
+      int16_t yPos = 220 + (i * 20);
+      
+      // Día
+      tft.setCursor(10, yPos);
+      tft.printf("%02d", forecasts[i].dayOfMonth);
+      
+      // Ícono pequeño del clima
+      int16_t iconX = 35;
+      int16_t iconY = yPos + 4;
+      String weather = forecasts[i].weatherMain;
+      
+      if (weather == "Clear") {
+        // Sol pequeño
+        tft.fillCircle(iconX, iconY, 3, TFT_YELLOW);
+      } else if (weather == "Rain" || weather == "Drizzle") {
+        // Nube con lluvia pequeña
+        tft.fillCircle(iconX-2, iconY, 2, TFT_CYAN);
+        tft.fillCircle(iconX+2, iconY, 2, TFT_CYAN);
+        tft.drawLine(iconX-1, iconY+3, iconX-1, iconY+5, TFT_CYAN);
+        tft.drawLine(iconX+1, iconY+3, iconX+1, iconY+5, TFT_CYAN);
+      } else {
+        // Nube pequeña
+        tft.fillCircle(iconX-2, iconY, 2, TFT_WHITE);
+        tft.fillCircle(iconX+2, iconY, 2, TFT_WHITE);
+      }
+      
+      // Temperaturas
+      tft.setCursor(50, yPos);
+      tft.printf("%.0f-%.0fC", forecasts[i].tempMin, forecasts[i].tempMax);
+    }
+  }
+  
+  // ========== INFO ALARMA ==========
+  if (alarmEnabled) {
+    tft.setTextFont(1);
+    tft.setTextSize(1);
+    tft.setCursor(10, 295);
+    tft.printf("Alarma: %02d:%02d ON", alarmHour, alarmMinute);
+  }
   
   // Volver a fuente por defecto
   tft.setTextFont(1);
   tft.setTextSize(1);
+}
+
+// Mantener displayTime para compatibilidad
+void displayTime() {
+  displayAllInfo();
 }
 
 void displayDate() {
@@ -818,31 +891,6 @@ void setup() {
   }
 }
 
-void checkButton() {
-  if (digitalRead(BUTTON_PIN) == LOW && (millis() - lastButtonPress > BUTTON_DEBOUNCE_DELAY)) {
-    lastButtonPress = millis();
-    currentMode = (DisplayMode)((currentMode + 1) % 6);
-    
-    Serial.print("Modo: ");
-    switch(currentMode) {
-      case MODE_AUTO: Serial.println("AUTO"); break;
-      case MODE_CLOCK_ONLY: Serial.println("HORA"); break;
-      case MODE_DATE_ONLY: Serial.println("FECHA"); break;
-      case MODE_EPHEMERIS_ONLY:
-        Serial.println("EFEMERIDES");
-        marqueeY = 240; // Reset posición vertical
-        currentEfemerideIndex = random(0, numEfemerides);
-        break;
-      case MODE_SENSORS: 
-        Serial.println("SENSORES"); 
-        lastSensorToggle = millis();
-        sensorDisplayIndex = 0;
-        break;
-      case MODE_FORECAST: Serial.println("PRONOSTICO"); break;
-    }
-  }
-}
-
 void loop() {
   unsigned long currentMillis = millis();
   
@@ -866,89 +914,41 @@ void loop() {
     return;
   }
   
-  // Botón de modo normal
-  checkButton();
-  
+  // Resync hora cada 24h
   if (currentMillis - lastTimeSync >= TIME_SYNC_INTERVAL) {
     resyncTime();
   }
   
+  // Leer sensores cada 10 segundos
   if (sensorsAvailable && (currentMillis - lastSensorRead >= SENSOR_READ_INTERVAL)) {
     readSensors();
     lastSensorRead = currentMillis;
   }
   
+  // Actualizar clima periódicamente
   if (currentMillis - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL) {
     fetchWeatherForecast();
   }
   
-  switch(currentMode) {
-    case MODE_AUTO:
-      if (currentMillis - lastEfemerideTime >= EFEMERIDE_INTERVAL) {
-        showingEfemeride = !showingEfemeride;
-        if (showingEfemeride) {
-          marqueeY = 240; // Reset posición vertical
-          currentEfemerideIndex = random(0, numEfemerides);
-        }
-        lastEfemerideTime = currentMillis;
-      }
-      
-      if (showingEfemeride) {
-        displayEfemeride();
-        delay(20);
-      } else {
-        if (!showingDate && (currentMillis - lastDateToggleTime >= DATE_SHOW_INTERVAL)) {
-          showingDate = true;
-          lastDateToggleTime = currentMillis;
-        } else if (showingDate && (currentMillis - lastDateToggleTime >= DATE_DISPLAY_DURATION)) {
-          showingDate = false;
-          lastDateToggleTime = currentMillis;
-        }
-        
-        if (showingDate) {
-          displayDate();
-        } else {
-          displayTime();
-        }
-        delay(1000);
-      }
-      break;
-      
-    case MODE_CLOCK_ONLY:
-      displayTime();
-      delay(1000);
-      break;
-      
-    case MODE_DATE_ONLY:
-      displayDate();
-      delay(1000);
-      break;
-      
-    case MODE_EPHEMERIS_ONLY:
-      displayEfemeride();
-      delay(20);
-      break;
-      
-    case MODE_SENSORS:
-      if (sensorsAvailable) {
-        // Alternar entre temperatura, humedad y presión cada 3 segundos
-        if (currentMillis - lastSensorToggle >= SENSOR_TOGGLE_INTERVAL) {
-          sensorDisplayIndex = (sensorDisplayIndex + 1) % 3;
-          lastSensorToggle = currentMillis;
-        }
-        
-        switch(sensorDisplayIndex) {
-          case 0: displayTemperature(); break;
-          case 1: displayHumidity(); break;
-          case 2: displayPressure(); break;
-        }
-      }
-      delay(1000);
-      break;
-      
-    case MODE_FORECAST:
-      displayForecast();
-      delay(1000);
-      break;
+  // ========== SOLO 2 PANTALLAS: PRINCIPAL Y EFEMÉRIDES ==========
+  
+  // Alternar entre pantalla principal y efemérides cada intervalo
+  if (currentMillis - lastEfemerideTime >= EFEMERIDE_INTERVAL) {
+    showingEfemeride = !showingEfemeride;
+    if (showingEfemeride) {
+      marqueeY = 320; // Reset posición vertical (empieza abajo)
+      currentEfemerideIndex = random(0, numEfemerides);
+    }
+    lastEfemerideTime = currentMillis;
+  }
+  
+  if (showingEfemeride) {
+    // Pantalla de efemérides con efecto scrolling
+    displayEfemeride();
+    delay(20);
+  } else {
+    // Pantalla principal con toda la info
+    displayAllInfo();
+    delay(1000);
   }
 }
