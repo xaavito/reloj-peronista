@@ -8,13 +8,14 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>              // Librería TFT_eSPI (reemplaza Adafruit_GFX + Adafruit_ILI9341)
 #include <Adafruit_AHTX0.h>
-#include <Adafruit_BMP085.h>
+#include <Adafruit_BMP085.h> es 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "time.h"
 #include "config.h"
 #include "peron_image.h"
+#include "marcha_peronista.h"
 
 // Inicializar display TFT con TFT_eSPI
 TFT_eSPI tft = TFT_eSPI();        // Configuración viene de platformio.ini build_flags
@@ -34,7 +35,7 @@ unsigned long lastMarqueeUpdate = 0;
 const unsigned long MARQUEE_SPEED = 50;
 
 unsigned long lastTimeSync = 0;
-const unsigned long TIME_SYNC_INTERVAL = 432000000;  // 5 días en milisegundos (5 * 24 * 60 * 60 * 1000)
+bool timeSyncedToday = false;  // Flag para sincronizar solo una vez al día
 
 // ========== VARIABLES ALARMA ==========
 #ifdef ALARM_ENABLED
@@ -63,6 +64,8 @@ const int ALARM_BUTTON_PIN = 4;      // Botón configuración alarma
 
 // Buzzer
 const int BUZZER_PIN = 25;           // Buzzer activo 5V para alarma (GPIO 25)
+int currentMelodyNote = 0;           // Índice de nota actual en melodía
+unsigned long lastNoteTime = 0;      // Tiempo de última nota tocada
 
 // Configuración de alarma
 bool alarmConfigMode = false;
@@ -627,7 +630,8 @@ void checkAlarm() {
     alarmTriggered = false;
     alarmSnoozed = false;
     snoozeCount = 0;
-    digitalWrite(BUZZER_PIN, LOW);
+    currentMelodyNote = 0;
+    noTone(BUZZER_PIN);
     Serial.println("Alarma finalizada (timeout 60min)");
   }
   
@@ -637,7 +641,8 @@ void checkAlarm() {
       alarmTriggered = false;
       alarmSnoozed = false;
       snoozeCount = 0;
-      digitalWrite(BUZZER_PIN, LOW);
+      currentMelodyNote = 0;
+      noTone(BUZZER_PIN);
     }
   }
 }
@@ -645,11 +650,28 @@ void checkAlarm() {
 void displayAlarm() {
   unsigned long currentMillis = millis();
   
-  // Buzzer intermitente (500ms on/off)
-  if (currentMillis - lastAlarmBlink >= 500) {
-    lastAlarmBlink = currentMillis;
-    alarmBlinkState = !alarmBlinkState;
-    digitalWrite(BUZZER_PIN, alarmBlinkState ? HIGH : LOW);
+  // ========== REPRODUCIR MARCHA PERONISTA EN LOOP ==========
+  // Verificar si es tiempo de tocar la siguiente nota
+  if (currentMillis - lastNoteTime >= marchaPeron_durations[currentMelodyNote]) {
+    // Detener nota anterior
+    noTone(BUZZER_PIN);
+    
+    // Avanzar a siguiente nota
+    currentMelodyNote++;
+    
+    // Si llegamos al final, reiniciar melodía
+    if (currentMelodyNote >= marchaPeron_length) {
+      currentMelodyNote = 0;
+      delay(500);  // Pausa entre repeticiones
+    }
+    
+    // Tocar nueva nota
+    int frequency = marchaPeron_melody[currentMelodyNote];
+    if (frequency != REST) {
+      tone(BUZZER_PIN, frequency);
+    }
+    
+    lastNoteTime = currentMillis;
   }
   
   // ========== PANTALLA CON IMAGEN DE PERÓN ==========
@@ -762,7 +784,8 @@ void checkAlarmButton() {
       alarmTriggered = false;
       alarmSnoozed = false;
       snoozeCount = 0;
-      digitalWrite(BUZZER_PIN, LOW);
+      currentMelodyNote = 0;
+      noTone(BUZZER_PIN);
       Serial.println("✓ Alarma APAGADA por usuario");
       
       // Mostrar confirmación
@@ -953,14 +976,22 @@ void setup() {
   Serial.println("Rotacion configurada: VERTICAL");
   
   tft.fillScreen(TFT_BLACK);
+  
+  // Mostrar imagen de Perón centrada arriba
+  int16_t imgX = (240 - PERON_IMG_WIDTH) / 2;
+  int16_t imgY = 20;
+  tft.pushImage(imgX, imgY, PERON_IMG_WIDTH, PERON_IMG_HEIGHT, peron_image);
+  
+  // Texto "RELOJ PERONISTA" debajo de la imagen
   tft.setTextSize(4);
-  tft.setTextColor(TFT_WHITE);
-  tft.setCursor(40, 120);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  int16_t textY = imgY + PERON_IMG_HEIGHT + 20;
+  tft.setCursor(40, textY);
   tft.print("RELOJ");
-  tft.setCursor(20, 160);
+  tft.setCursor(20, textY + 35);
   tft.print("PERONISTA");
   
-  delay(2000);
+  delay(3000);  // Más tiempo para ver imagen + texto
   
   // WiFi
   tft.fillScreen(TFT_BLACK);
@@ -986,10 +1017,10 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(ALARM_BUTTON_PIN, INPUT_PULLUP);
   
-  // Buzzer
+  // Buzzer (configurado para PWM/tone)
   pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW);  // Iniciar apagado
-  Serial.println("Buzzer configurado en GPIO 25");
+  noTone(BUZZER_PIN);  // Asegurar que está apagado
+  Serial.println("Buzzer configurado en GPIO 25 (Marcha Peronista)");
   
   // Sensores
   tft.fillScreen(TFT_BLACK);
@@ -1046,8 +1077,9 @@ void checkModeButton() {
     snoozeStartTime = currentMillis;
     alarmTriggered = false;  // Temporalmente apagar alarma
     snoozeCount++;
+    currentMelodyNote = 0;  // Reset melodía
     
-    digitalWrite(BUZZER_PIN, LOW);  // Apagar buzzer
+    noTone(BUZZER_PIN);  // Apagar buzzer
     
     Serial.printf("💤 SNOOZE #%d activado - 8 minutos\n", snoozeCount);
     
@@ -1110,9 +1142,18 @@ void loop() {
     return;
   }
   
-  // Resync hora cada 5 días
-  if (currentMillis - lastTimeSync >= TIME_SYNC_INTERVAL) {
-    resyncTime();
+  // Resync hora cada día a medianoche (00:00)
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    if (timeinfo.tm_hour == 0 && timeinfo.tm_min == 0 && !timeSyncedToday) {
+      Serial.println("🕛 Medianoche - Sincronizando hora...");
+      resyncTime();
+      timeSyncedToday = true;
+    }
+    // Reset flag cuando ya no es medianoche
+    if (timeinfo.tm_hour != 0 || timeinfo.tm_min != 0) {
+      timeSyncedToday = false;
+    }
   }
   
   // Leer sensores cada 10 segundos
@@ -1121,8 +1162,10 @@ void loop() {
     lastSensorRead = currentMillis;
   }
   
-  // Actualizar clima periódicamente
-  if (currentMillis - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL) {
+  // Actualizar clima cada 6 horas (21600000 ms = 6 * 60 * 60 * 1000)
+  const unsigned long WEATHER_UPDATE_INTERVAL_6H = 21600000;
+  if (currentMillis - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL_6H) {
+    Serial.println("🌤️ Actualizando clima (cada 6 horas)...");
     fetchWeatherForecast();
   }
   
@@ -1134,12 +1177,44 @@ void loop() {
     delay(20);
   } else {
     // MODO NORMAL: Pantalla principal con toda la info
-    // Reducir flickeo: solo actualizar cada segundo si cambió
+    // Actualización inteligente para evitar flickeo
     static unsigned long lastFullUpdate = 0;
-    if (currentMillis - lastFullUpdate >= 1000) {
+    static int lastMinute = -1;
+    static int lastHour = -1;
+    
+    // Obtener hora actual
+    struct tm currentTime;
+    bool timeValid = getLocalTime(&currentTime);
+    
+    // Primera vez o cada 10 segundos: actualización completa
+    if (lastFullUpdate == 0 || (currentMillis - lastFullUpdate >= 10000)) {
       displayAllInfo();
       lastFullUpdate = currentMillis;
+      if (timeValid) {
+        lastMinute = currentTime.tm_min;
+        lastHour = currentTime.tm_hour;
+      }
     }
-    delay(50);  // Delay más corto para mejor respuesta de botones
+    // Solo actualizar hora si cambió (sin redibujar todo)
+    else if (timeValid && (currentTime.tm_min != lastMinute || currentTime.tm_hour != lastHour)) {
+      // Actualizar solo la hora (sin fillScreen)
+      char timeStr[6];
+      sprintf(timeStr, "%02d:%02d", currentTime.tm_hour, currentTime.tm_min);
+      
+      // Borrar área de hora solamente
+      tft.fillRect(20, 10, 200, 75, TFT_BLACK);
+      
+      // Redibujar solo la hora
+      tft.setTextFont(4);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK);
+      tft.setTextSize(3);
+      tft.setCursor(20, 10);
+      tft.print(timeStr);
+      
+      lastMinute = currentTime.tm_min;
+      lastHour = currentTime.tm_hour;
+    }
+    
+    delay(50);  // Delay corto para mejor respuesta de botones
   }
 }
