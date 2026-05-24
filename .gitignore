@@ -6,3 +6,6 @@
 
 # Configuración sensible (credenciales WiFi)
 src/config.h
+
+
+stl/Escudo.stl
