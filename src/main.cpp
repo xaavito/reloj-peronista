@@ -22,12 +22,10 @@ Adafruit_AHTX0 aht;
 Adafruit_BMP085 bmp;
 
 // ========== VARIABLES GLOBALES ==========
-unsigned long lastEfemerideTime = 0;
-bool showingEfemeride = false;
+bool peronistMode = false;  // false=modo normal, true=modo peronista (efemérides)
 int currentEfemerideIndex = 0;
-
-unsigned long lastDateToggleTime = 0;
-bool showingDate = false;
+unsigned long lastModeButtonPress = 0;
+const unsigned long MODE_BUTTON_DEBOUNCE = 300;  // 300ms debounce
 
 int16_t marqueeX = 0;
 int16_t marqueeY = 240; // Empieza abajo de la pantalla
@@ -35,7 +33,7 @@ unsigned long lastMarqueeUpdate = 0;
 const unsigned long MARQUEE_SPEED = 50;
 
 unsigned long lastTimeSync = 0;
-const unsigned long TIME_SYNC_INTERVAL = 86400000;
+const unsigned long TIME_SYNC_INTERVAL = 432000000;  // 5 días en milisegundos (5 * 24 * 60 * 60 * 1000)
 
 // ========== VARIABLES ALARMA ==========
 #ifdef ALARM_ENABLED
@@ -253,53 +251,88 @@ void displayAllInfo() {
     tft.printf("P:%.0fhPa", pressure);
   }
   
-  // ========== PRONÓSTICO (3 días con íconos) ==========
+  // ========== PRONÓSTICO (3 días con íconos GRANDES) ==========
   if (weatherDataAvailable && numForecasts > 0) {
-    tft.setTextFont(1);
-    tft.setTextSize(1);
-    tft.setCursor(10, 208);
-    tft.print("Pronostico:");
-    
-    // Mostrar hasta 3 días de forma compacta con íconos
+    // Mostrar hasta 3 días con íconos más grandes (sin título)
+    // Bajado para no superponerse con presión
     for (int i = 0; i < numForecasts && i < 3; i++) {
-      int16_t yPos = 220 + (i * 20);
+      int16_t yPos = 215 + (i * 30);  // Bajado de 205 a 215, espaciado 30px
       
-      // Día
+      // Día (más grande)
+      tft.setTextSize(2);
       tft.setCursor(10, yPos);
       tft.printf("%02d", forecasts[i].dayOfMonth);
       
-      // Ícono pequeño del clima
-      int16_t iconX = 35;
-      int16_t iconY = yPos + 4;
+      // Ícono más grande del clima
+      int16_t iconX = 45;
+      int16_t iconY = yPos + 6;
       String weather = forecasts[i].weatherMain;
       
       if (weather == "Clear") {
-        // Sol pequeño
-        tft.fillCircle(iconX, iconY, 3, TFT_YELLOW);
+        // Sol más grande
+        tft.fillCircle(iconX, iconY, 5, TFT_YELLOW);
+        // Rayos del sol
+        for (int j = 0; j < 4; j++) {
+          float angle = j * 90 * PI / 180;
+          int x1 = iconX + cos(angle) * 7;
+          int y1 = iconY + sin(angle) * 7;
+          tft.drawPixel(x1, y1, TFT_YELLOW);
+        }
       } else if (weather == "Rain" || weather == "Drizzle") {
-        // Nube con lluvia pequeña
-        tft.fillCircle(iconX-2, iconY, 2, TFT_CYAN);
-        tft.fillCircle(iconX+2, iconY, 2, TFT_CYAN);
-        tft.drawLine(iconX-1, iconY+3, iconX-1, iconY+5, TFT_CYAN);
-        tft.drawLine(iconX+1, iconY+3, iconX+1, iconY+5, TFT_CYAN);
+        // Nube con lluvia más grande
+        tft.fillCircle(iconX-3, iconY, 3, TFT_CYAN);
+        tft.fillCircle(iconX+3, iconY, 3, TFT_CYAN);
+        tft.fillRect(iconX-4, iconY, 8, 3, TFT_CYAN);
+        // Gotas
+        tft.drawLine(iconX-2, iconY+4, iconX-2, iconY+7, TFT_CYAN);
+        tft.drawLine(iconX+2, iconY+4, iconX+2, iconY+7, TFT_CYAN);
       } else {
-        // Nube pequeña
-        tft.fillCircle(iconX-2, iconY, 2, TFT_WHITE);
-        tft.fillCircle(iconX+2, iconY, 2, TFT_WHITE);
+        // Nube más grande
+        tft.fillCircle(iconX-3, iconY, 3, TFT_WHITE);
+        tft.fillCircle(iconX+3, iconY, 3, TFT_WHITE);
+        tft.fillRect(iconX-4, iconY, 8, 3, TFT_WHITE);
       }
       
-      // Temperaturas
-      tft.setCursor(50, yPos);
+      // Temperaturas más grandes
+      tft.setTextSize(2);
+      tft.setCursor(70, yPos);
       tft.printf("%.0f-%.0fC", forecasts[i].tempMin, forecasts[i].tempMax);
     }
   }
   
-  // ========== INFO ALARMA ==========
+  // ========== FILA DE INDICADORES (Debajo de hora, antes de fecha) ==========
+  int16_t indicatorY = 75;  // Bajado para no superponerse con hora
+  int16_t startX = 20;      // Alineado con la hora
+  
+  // ÍCONO WIFI (VERDE)
+  if (WiFi.status() == WL_CONNECTED) {
+    int16_t wifiX = startX + 5;
+    
+    // Arcos WiFi en VERDE
+    tft.drawCircle(wifiX, indicatorY+6, 1, TFT_GREEN);      // Base
+    tft.drawCircle(wifiX, indicatorY+6, 3, TFT_GREEN);      // Nivel 1
+    tft.drawCircle(wifiX, indicatorY+6, 5, TFT_GREEN);      // Nivel 2
+    tft.drawCircle(wifiX, indicatorY+6, 7, TFT_GREEN);      // Nivel 3
+    
+    // Solo mostrar arcos superiores
+    tft.fillRect(wifiX-8, indicatorY+7, 16, 8, TFT_BLACK);
+  }
+  
+  // ÍCONO ALARMA + HORA (al lado del WiFi)
   if (alarmEnabled) {
+    int16_t bellX = startX + 30;  // 25px después del WiFi
+    
+    // Campana amarilla
+    tft.fillCircle(bellX+2, indicatorY+6, 2, TFT_YELLOW);       // Cuerpo
+    tft.fillRect(bellX, indicatorY+7, 4, 2, TFT_YELLOW);        // Base
+    tft.fillRect(bellX+1, indicatorY+9, 2, 1, TFT_BLACK);       // Abertura
+    tft.fillCircle(bellX+2, indicatorY+4, 1, TFT_YELLOW);       // Pomo
+    
+    // Hora de alarma al lado
     tft.setTextFont(1);
-    tft.setTextSize(1);
-    tft.setCursor(10, 295);
-    tft.printf("Alarma: %02d:%02d ON", alarmHour, alarmMinute);
+    tft.setTextSize(2);  // Más grande para que se vea bien
+    tft.setCursor(bellX + 10, indicatorY);
+    tft.printf("%02d:%02d", alarmHour, alarmMinute);
   }
   
   // Volver a fuente por defecto
@@ -891,6 +924,28 @@ void setup() {
   }
 }
 
+void checkModeButton() {
+  unsigned long currentMillis = millis();
+  
+  // Detectar presión del botón con debounce
+  if (digitalRead(BUTTON_PIN) == LOW && (currentMillis - lastModeButtonPress > MODE_BUTTON_DEBOUNCE)) {
+    lastModeButtonPress = currentMillis;
+    peronistMode = !peronistMode;  // Toggle entre modos
+    
+    if (peronistMode) {
+      // Entrando a modo peronista
+      marqueeY = 320; // Reset posición vertical (empieza abajo)
+      currentEfemerideIndex = random(0, numEfemerides);
+      Serial.println("▶ MODO PERONISTA (Efemérides)");
+    } else {
+      // Volviendo a modo normal
+      Serial.println("▶ MODO NORMAL (Hora y Datos)");
+    }
+    
+    delay(200); // Debounce adicional
+  }
+}
+
 void loop() {
   unsigned long currentMillis = millis();
   
@@ -914,7 +969,10 @@ void loop() {
     return;
   }
   
-  // Resync hora cada 24h
+  // Chequear botón de modo (GPIO 27)
+  checkModeButton();
+  
+  // Resync hora cada 5 días
   if (currentMillis - lastTimeSync >= TIME_SYNC_INTERVAL) {
     resyncTime();
   }
@@ -930,24 +988,14 @@ void loop() {
     fetchWeatherForecast();
   }
   
-  // ========== SOLO 2 PANTALLAS: PRINCIPAL Y EFEMÉRIDES ==========
+  // ========== 2 MODOS: NORMAL Y PERONISTA ==========
   
-  // Alternar entre pantalla principal y efemérides cada intervalo
-  if (currentMillis - lastEfemerideTime >= EFEMERIDE_INTERVAL) {
-    showingEfemeride = !showingEfemeride;
-    if (showingEfemeride) {
-      marqueeY = 320; // Reset posición vertical (empieza abajo)
-      currentEfemerideIndex = random(0, numEfemerides);
-    }
-    lastEfemerideTime = currentMillis;
-  }
-  
-  if (showingEfemeride) {
-    // Pantalla de efemérides con efecto scrolling
+  if (peronistMode) {
+    // MODO PERONISTA: Efemérides con efecto scrolling
     displayEfemeride();
     delay(20);
   } else {
-    // Pantalla principal con toda la info
+    // MODO NORMAL: Pantalla principal con toda la info
     displayAllInfo();
     delay(1000);
   }
