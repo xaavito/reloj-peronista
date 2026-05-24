@@ -51,6 +51,12 @@ unsigned long alarmStartTime = 0;
 unsigned long lastAlarmBlink = 0;
 bool alarmBlinkState = false;
 
+// Snooze
+bool alarmSnoozed = false;
+unsigned long snoozeStartTime = 0;
+const unsigned long SNOOZE_DURATION = 480000;  // 8 minutos en milisegundos (8 * 60 * 1000)
+int snoozeCount = 0;
+
 // Botones
 const int BUTTON_PIN = 27;           // Botón cambio de modo (GPIO 27 disponible - no interfiere con HSPI)
 const int ALARM_BUTTON_PIN = 4;      // Botón configuración alarma
@@ -334,6 +340,21 @@ void displayAllInfo() {
     tft.setTextSize(2);  // Más grande para que se vea bien
     tft.setCursor(bellX + 10, indicatorY);
     tft.printf("%02d:%02d", alarmHour, alarmMinute);
+    
+    // ÍCONO SNOOZE si está activo
+    if (alarmSnoozed) {
+      tft.setTextSize(2);
+      tft.setTextColor(TFT_CYAN, TFT_BLACK);
+      tft.setCursor(bellX + 58, indicatorY);
+      tft.print("Z");  // Icono simple de snooze
+      
+      // Pequeño contador si hay múltiples snoozes
+      if (snoozeCount > 1) {
+        tft.setTextSize(1);
+        tft.setCursor(bellX + 70, indicatorY + 8);
+        tft.printf("x%d", snoozeCount);
+      }
+    }
   }
   
   // Volver a fuente por defecto
@@ -582,68 +603,91 @@ void checkAlarm() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) return;
   
-  if (timeinfo.tm_hour == alarmHour && timeinfo.tm_min == alarmMinute && !alarmTriggered) {
+  unsigned long currentMillis = millis();
+  
+  // Verificar si termina snooze
+  if (alarmSnoozed && (currentMillis - snoozeStartTime >= SNOOZE_DURATION)) {
+    alarmSnoozed = false;
     alarmTriggered = true;
-    alarmStartTime = millis();
+    alarmStartTime = currentMillis;
+    Serial.printf("⏰ Alarma reactivada después de snooze #%d\n", snoozeCount);
+  }
+  
+  // Activar alarma a la hora configurada
+  if (timeinfo.tm_hour == alarmHour && timeinfo.tm_min == alarmMinute && 
+      !alarmTriggered && !alarmSnoozed) {
+    alarmTriggered = true;
+    alarmStartTime = currentMillis;
+    snoozeCount = 0;  // Reset contador de snooze
     Serial.println("🔔 ALARMA ACTIVADA!");
   }
   
-  if (alarmTriggered) {
-    #ifdef ALARM_DURATION
-    unsigned long duration = ALARM_DURATION;
-    #else
-    unsigned long duration = 60000;
-    #endif
-    
-    if (millis() - alarmStartTime >= duration) {
-      alarmTriggered = false;
-      digitalWrite(BUZZER_PIN, LOW);  // Apagar buzzer
-      Serial.println("Alarma finalizada (timeout)");
-    }
-    
-    // Detener con botón de modo
-    if (digitalRead(BUTTON_PIN) == LOW) {
-      alarmTriggered = false;
-      digitalWrite(BUZZER_PIN, LOW);  // Apagar buzzer
-      Serial.println("Alarma detenida por usuario");
-      delay(500);
-    }
+  // Timeout de alarma (60 minutos máximo si no se apaga)
+  if (alarmTriggered && (currentMillis - alarmStartTime >= 3600000)) {
+    alarmTriggered = false;
+    alarmSnoozed = false;
+    snoozeCount = 0;
+    digitalWrite(BUZZER_PIN, LOW);
+    Serial.println("Alarma finalizada (timeout 60min)");
   }
   
-  // Reset si cambia la hora
+  // Reset al cambiar de hora
   if (timeinfo.tm_hour != alarmHour) {
-    alarmTriggered = false;
-    digitalWrite(BUZZER_PIN, LOW);  // Apagar buzzer
+    if (alarmTriggered || alarmSnoozed) {
+      alarmTriggered = false;
+      alarmSnoozed = false;
+      snoozeCount = 0;
+      digitalWrite(BUZZER_PIN, LOW);
+    }
   }
 }
 
 void displayAlarm() {
   unsigned long currentMillis = millis();
   
-  #ifdef ALARM_BLINK_INTERVAL
-  unsigned long blinkInterval = ALARM_BLINK_INTERVAL;
-  #else
-  unsigned long blinkInterval = 500;
-  #endif
-  
-  if (currentMillis - lastAlarmBlink >= blinkInterval) {
+  // Buzzer intermitente (500ms on/off)
+  if (currentMillis - lastAlarmBlink >= 500) {
     lastAlarmBlink = currentMillis;
     alarmBlinkState = !alarmBlinkState;
+    digitalWrite(BUZZER_PIN, alarmBlinkState ? HIGH : LOW);
   }
   
-  if (alarmBlinkState) {
-    // Pantalla llena invertida para alarma
-    tft.fillScreen(TFT_WHITE);
-    tft.setTextColor(TFT_BLACK);
-    tft.setTextSize(7);
-    tft.setCursor(10, 80);
-    tft.print("ALARMA!");
-    // Activar buzzer
-    digitalWrite(BUZZER_PIN, HIGH);
-  } else {
-    tft.fillScreen(TFT_BLACK);
-    // Apagar buzzer
-    digitalWrite(BUZZER_PIN, LOW);
+  // ========== PANTALLA CON IMAGEN DE PERÓN ==========
+  tft.fillScreen(TFT_BLACK);
+  
+  // Mostrar imagen de Perón centrada arriba
+  int16_t imgX = (240 - PERON_IMG_WIDTH) / 2;
+  int16_t imgY = 30;
+  tft.pushImage(imgX, imgY, PERON_IMG_WIDTH, PERON_IMG_HEIGHT, peron_image);
+  
+  // Mensaje motivacional debajo
+  int16_t textY = imgY + PERON_IMG_HEIGHT + 20;
+  
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  
+  // Línea 1
+  tft.setCursor(10, textY);
+  tft.print("El general necesita");
+  
+  // Línea 2
+  tft.setCursor(10, textY + 20);
+  tft.print("que te levantes y");
+  
+  // Línea 3
+  tft.setCursor(10, textY + 40);
+  tft.print("trabajes para sacar");
+  
+  // Línea 4
+  tft.setCursor(10, textY + 60);
+  tft.print("el pais adelante");
+  
+  // Mostrar contador de snooze si hay
+  if (snoozeCount > 0) {
+    tft.setTextSize(1);
+    tft.setCursor(10, 10);
+    tft.printf("Snooze x%d", snoozeCount);
   }
 }
 
@@ -705,67 +749,103 @@ void checkAlarmButton() {
   int buttonState = digitalRead(ALARM_BUTTON_PIN);
   unsigned long currentMillis = millis();
   
-  // Detectar inicio de presión
-  if (buttonState == LOW && alarmButtonPressStart == 0) {
+  // SI ALARMA SONANDO: PRESIÓN CORTA APAGA LA ALARMA
+  if (alarmTriggered && buttonState == LOW && alarmButtonPressStart == 0) {
     alarmButtonPressStart = currentMillis;
-    alarmButtonLongPressDetected = false;
   }
   
-  // Detectar presión larga
-  if (buttonState == LOW && !alarmButtonLongPressDetected) {
-    if (currentMillis - alarmButtonPressStart >= BUTTON_LONG_PRESS_DURATION) {
-      alarmButtonLongPressDetected = true;
-      
-      if (alarmConfigMode) {
-        // En modo config: avanzar campo
-        alarmConfigField = (alarmConfigField + 1) % 4;
-        Serial.printf("Campo: %d\n", alarmConfigField);
-      } else {
-        // Entrar a modo config
-        alarmConfigMode = true;
-        alarmConfigField = 0;
-        tempAlarmHour = alarmHour;
-        tempAlarmMinute = alarmMinute;
-        tempAlarmEnabled = alarmEnabled;
-        Serial.println("▶ Modo config alarma");
-      }
-      delay(300);
-    }
-  }
-  
-  // Detectar liberación del botón
-  if (buttonState == HIGH && alarmButtonPressStart > 0) {
+  if (alarmTriggered && buttonState == HIGH && alarmButtonPressStart > 0) {
     unsigned long pressDuration = currentMillis - alarmButtonPressStart;
     
-    // Presión corta
-    if (pressDuration < BUTTON_LONG_PRESS_DURATION && !alarmButtonLongPressDetected) {
-      if (alarmConfigMode) {
-        if (alarmConfigField == 0) {
-          // Incrementar hora
-          tempAlarmHour = (tempAlarmHour + 1) % 24;
-          Serial.printf("Hora: %02d\n", tempAlarmHour);
-        } else if (alarmConfigField == 1) {
-          // Incrementar minuto
-          tempAlarmMinute = (tempAlarmMinute + 1) % 60;
-          Serial.printf("Minuto: %02d\n", tempAlarmMinute);
-        } else if (alarmConfigField == 2) {
-          // Toggle ON/OFF
-          tempAlarmEnabled = !tempAlarmEnabled;
-          Serial.println(tempAlarmEnabled ? "ON" : "OFF");
-        } else if (alarmConfigField == 3) {
-          // Guardar
-          alarmHour = tempAlarmHour;
-          alarmMinute = tempAlarmMinute;
-          alarmEnabled = tempAlarmEnabled;
-          alarmConfigMode = false;
-          Serial.printf("✓ Guardado: %02d:%02d %s\n", 
-            alarmHour, alarmMinute, alarmEnabled ? "ON" : "OFF");
-        }
-        delay(200);
-      }
+    // Cualquier presión apaga la alarma
+    if (pressDuration < 3000) {  // Hasta 3 segundos
+      alarmTriggered = false;
+      alarmSnoozed = false;
+      snoozeCount = 0;
+      digitalWrite(BUZZER_PIN, LOW);
+      Serial.println("✓ Alarma APAGADA por usuario");
+      
+      // Mostrar confirmación
+      tft.fillScreen(TFT_BLACK);
+      tft.setTextSize(4);
+      tft.setTextColor(TFT_GREEN, TFT_BLACK);
+      tft.setCursor(50, 120);
+      tft.print("ALARMA");
+      tft.setCursor(60, 160);
+      tft.print("APAGADA");
+      delay(2000);
+      
+      alarmButtonPressStart = 0;
+      return;
     }
     
     alarmButtonPressStart = 0;
+  }
+  
+  // MODO NORMAL: CONFIGURACIÓN DE ALARMA
+  if (!alarmTriggered) {
+    // Detectar inicio de presión
+    if (buttonState == LOW && alarmButtonPressStart == 0) {
+      alarmButtonPressStart = currentMillis;
+      alarmButtonLongPressDetected = false;
+    }
+    
+    // Detectar presión larga
+    if (buttonState == LOW && !alarmButtonLongPressDetected) {
+      if (currentMillis - alarmButtonPressStart >= BUTTON_LONG_PRESS_DURATION) {
+        alarmButtonLongPressDetected = true;
+        
+        if (alarmConfigMode) {
+          // En modo config: avanzar campo
+          alarmConfigField = (alarmConfigField + 1) % 4;
+          Serial.printf("Campo: %d\n", alarmConfigField);
+        } else {
+          // Entrar a modo config
+          alarmConfigMode = true;
+          alarmConfigField = 0;
+          tempAlarmHour = alarmHour;
+          tempAlarmMinute = alarmMinute;
+          tempAlarmEnabled = alarmEnabled;
+          Serial.println("▶ Modo config alarma");
+        }
+        delay(300);
+      }
+    }
+    
+    // Detectar liberación del botón
+    if (buttonState == HIGH && alarmButtonPressStart > 0) {
+      unsigned long pressDuration = currentMillis - alarmButtonPressStart;
+      
+      // Presión corta
+      if (pressDuration < BUTTON_LONG_PRESS_DURATION && !alarmButtonLongPressDetected) {
+        if (alarmConfigMode) {
+          if (alarmConfigField == 0) {
+            // Incrementar hora
+            tempAlarmHour = (tempAlarmHour + 1) % 24;
+            Serial.printf("Hora: %02d\n", tempAlarmHour);
+          } else if (alarmConfigField == 1) {
+            // Incrementar minuto
+            tempAlarmMinute = (tempAlarmMinute + 1) % 60;
+            Serial.printf("Minuto: %02d\n", tempAlarmMinute);
+          } else if (alarmConfigField == 2) {
+            // Toggle ON/OFF
+            tempAlarmEnabled = !tempAlarmEnabled;
+            Serial.println(tempAlarmEnabled ? "ON" : "OFF");
+          } else if (alarmConfigField == 3) {
+            // Guardar
+            alarmHour = tempAlarmHour;
+            alarmMinute = tempAlarmMinute;
+            alarmEnabled = tempAlarmEnabled;
+            alarmConfigMode = false;
+            Serial.printf("✓ Guardado: %02d:%02d %s\n", 
+              alarmHour, alarmMinute, alarmEnabled ? "ON" : "OFF");
+          }
+          delay(200);
+        }
+      }
+      
+      alarmButtonPressStart = 0;
+    }
   }
 }
 
@@ -955,8 +1035,40 @@ void setup() {
 void checkModeButton() {
   unsigned long currentMillis = millis();
   
-  // Detectar presión del botón con debounce
-  if (digitalRead(BUTTON_PIN) == LOW && (currentMillis - lastModeButtonPress > MODE_BUTTON_DEBOUNCE)) {
+  // SI ALARMA SONANDO: BOTÓN ES SNOOZE
+  if (alarmTriggered && digitalRead(BUTTON_PIN) == LOW && 
+      (currentMillis - lastModeButtonPress > MODE_BUTTON_DEBOUNCE)) {
+    
+    lastModeButtonPress = currentMillis;
+    
+    // Activar snooze
+    alarmSnoozed = true;
+    snoozeStartTime = currentMillis;
+    alarmTriggered = false;  // Temporalmente apagar alarma
+    snoozeCount++;
+    
+    digitalWrite(BUZZER_PIN, LOW);  // Apagar buzzer
+    
+    Serial.printf("💤 SNOOZE #%d activado - 8 minutos\n", snoozeCount);
+    
+    // Mostrar mensaje de snooze
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setCursor(40, 120);
+    tft.printf("SNOOZE x%d", snoozeCount);
+    tft.setTextSize(2);
+    tft.setCursor(50, 160);
+    tft.print("8 minutos...");
+    delay(2000);
+    
+    return;
+  }
+  
+  // MODO NORMAL: TOGGLE MODO PERONISTA
+  if (!alarmTriggered && digitalRead(BUTTON_PIN) == LOW && 
+      (currentMillis - lastModeButtonPress > MODE_BUTTON_DEBOUNCE)) {
+    
     lastModeButtonPress = currentMillis;
     peronistMode = !peronistMode;  // Toggle entre modos
     
@@ -980,15 +1092,16 @@ void loop() {
   // Siempre chequear alarma
   checkAlarm();
   
-  // Si alarma sonando, mostrar y salir
+  // IMPORTANTE: Chequear botones ANTES de mostrar pantalla
+  checkModeButton();      // GPIO 27 - Snooze cuando alarma suena
+  checkAlarmButton();     // GPIO 4 - Apagar alarma
+  
+  // Si alarma sonando, mostrar y salir (después de chequear botones)
   if (alarmTriggered) {
     displayAlarm();
     delay(50);
     return;
   }
-  
-  // Chequear botón de alarma
-  checkAlarmButton();
   
   // Si en modo config, mostrar y salir
   if (alarmConfigMode) {
@@ -996,9 +1109,6 @@ void loop() {
     delay(50);
     return;
   }
-  
-  // Chequear botón de modo (GPIO 27)
-  checkModeButton();
   
   // Resync hora cada 5 días
   if (currentMillis - lastTimeSync >= TIME_SYNC_INTERVAL) {
@@ -1024,7 +1134,12 @@ void loop() {
     delay(20);
   } else {
     // MODO NORMAL: Pantalla principal con toda la info
-    displayAllInfo();
-    delay(1000);
+    // Reducir flickeo: solo actualizar cada segundo si cambió
+    static unsigned long lastFullUpdate = 0;
+    if (currentMillis - lastFullUpdate >= 1000) {
+      displayAllInfo();
+      lastFullUpdate = currentMillis;
+    }
+    delay(50);  // Delay más corto para mejor respuesta de botones
   }
 }
