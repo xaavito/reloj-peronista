@@ -8,10 +8,11 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>              // Librería TFT_eSPI (reemplaza Adafruit_GFX + Adafruit_ILI9341)
 #include <Adafruit_AHTX0.h>
-#include <Adafruit_BMP085.h> es 
+#include <Adafruit_BMP085.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>           // Para guardar configuración en NVS
 #include "time.h"
 #include "config.h"
 #include "peron_image.h"
@@ -22,6 +23,9 @@ TFT_eSPI tft = TFT_eSPI();        // Configuración viene de platformio.ini buil
 
 Adafruit_AHTX0 aht;
 Adafruit_BMP085 bmp;
+
+// Preferences para guardar configuración
+Preferences preferences;
 
 // ========== VARIABLES GLOBALES ==========
 bool peronistMode = false;  // false=modo normal, true=modo peronista (efemérides)
@@ -208,6 +212,38 @@ void resyncTime() {
       lastTimeSync = millis();
     }
   }
+}
+
+// ========== PERSISTENCIA DE CONFIGURACIÓN ==========
+
+void loadConfig() {
+  // Abrir namespace "reloj" en modo solo lectura
+  preferences.begin("reloj", true);
+  
+  // Cargar configuración de alarma (valores por defecto si no existen)
+  alarmHour = preferences.getInt("alarmHour", 7);
+  alarmMinute = preferences.getInt("alarmMinute", 30);
+  alarmEnabled = preferences.getBool("alarmEnabled", true);
+  
+  preferences.end();
+  
+  Serial.println("📂 Configuración cargada desde NVS:");
+  Serial.printf("   Alarma: %02d:%02d %s\n", alarmHour, alarmMinute, alarmEnabled ? "ON" : "OFF");
+}
+
+void saveConfig() {
+  // Abrir namespace "reloj" en modo lectura/escritura
+  preferences.begin("reloj", false);
+  
+  // Guardar configuración de alarma
+  preferences.putInt("alarmHour", alarmHour);
+  preferences.putInt("alarmMinute", alarmMinute);
+  preferences.putBool("alarmEnabled", alarmEnabled);
+  
+  preferences.end();
+  
+  Serial.println("💾 Configuración guardada en NVS:");
+  Serial.printf("   Alarma: %02d:%02d %s\n", alarmHour, alarmMinute, alarmEnabled ? "ON" : "OFF");
 }
 
 void displayAllInfo() {
@@ -860,6 +896,10 @@ void checkAlarmButton() {
             alarmMinute = tempAlarmMinute;
             alarmEnabled = tempAlarmEnabled;
             alarmConfigMode = false;
+            
+            // Guardar en NVS (persistente)
+            saveConfig();
+            
             Serial.printf("✓ Guardado: %02d:%02d %s\n", 
               alarmHour, alarmMinute, alarmEnabled ? "ON" : "OFF");
           }
@@ -960,6 +1000,10 @@ void setup() {
   delay(2000);  // Más tiempo para abrir Serial Monitor
   
   Serial.println("\n\n=== RELOJ PERONISTA TFT ILI9341 ===");
+  
+  // Cargar configuración guardada
+  loadConfig();
+  
   Serial.println("Inicializando SPI...");
   
   // Inicializar SPI explícitamente
