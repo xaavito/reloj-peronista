@@ -185,8 +185,11 @@ void connectWiFi() {
   // Timeout para portal de configuración (3 minutos si no se configura)
   wm.setConfigPortalTimeout(180);
   
-  // Timeout para intentar conectar a WiFi guardado (30 segundos)
-  wm.setConnectTimeout(30);
+  // Timeout para intentar conectar a WiFi guardado (60 segundos - más tiempo)
+  wm.setConnectTimeout(60);
+  
+  // Reintentos
+  wm.setConnectRetries(3);
   
   // Debug en Serial
   wm.setDebugOutput(true);
@@ -710,13 +713,35 @@ void drawPeronSilhouette() {
 void readSensors() {
   if (!sensorsAvailable) return;
   
+  // Guardar valores anteriores para comparar
+  static float lastTemp = -999;
+  static float lastHumidity = -999;
+  static float lastPressure = -999;
+  
   sensors_event_t humid, temp;
   aht.getEvent(&humid, &temp);
-  temperature = temp.temperature;
-  humidity = humid.relative_humidity;
-  pressure = bmp.readPressure() / 100.0;
+  float newTemp = temp.temperature;
+  float newHumidity = humid.relative_humidity;
+  float newPressure = bmp.readPressure() / 100.0;
   
-  Serial.printf("T:%.1f H:%.1f P:%.1f\n", temperature, humidity, pressure);
+  // Solo imprimir si hay cambio significativo (>0.2°C, >1% humedad, >0.5 hPa)
+  if (abs(newTemp - lastTemp) > 0.2 || 
+      abs(newHumidity - lastHumidity) > 1.0 || 
+      abs(newPressure - lastPressure) > 0.5 ||
+      lastTemp == -999) {  // Primera lectura
+    
+    Serial.printf("📊 Sensores: T:%.1f°C H:%.1f%% P:%.0fhPa\n", 
+                  newTemp, newHumidity, newPressure);
+    
+    lastTemp = newTemp;
+    lastHumidity = newHumidity;
+    lastPressure = newPressure;
+  }
+  
+  // Actualizar valores globales siempre
+  temperature = newTemp;
+  humidity = newHumidity;
+  pressure = newPressure;
 }
 
 void displayTemperature() {
@@ -783,7 +808,10 @@ String urlEncode(String str) {
 }
 
 void fetchWeatherForecast() {
-  if (WiFi.status() != WL_CONNECTED) return;
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("⚠️ No hay WiFi para obtener clima");
+    return;
+  }
   
   HTTPClient http;
   String cityEncoded = urlEncode(String(OPENWEATHER_CITY));
@@ -792,42 +820,79 @@ void fetchWeatherForecast() {
   url += "&appid=" + String(OPENWEATHER_API_KEY);
   url += "&units=metric&lang=es&cnt=24";
   
-  Serial.println("Obteniendo clima...");
+  Serial.println("🌤️ Obteniendo pronóstico del clima...");
+  Serial.printf("   Ciudad: %s, %s\n", OPENWEATHER_CITY, OPENWEATHER_COUNTRY);
+  Serial.printf("   API Key: %s\n", OPENWEATHER_API_KEY);
+  Serial.println("   URL completa:");
+  Serial.print("   ");
+  Serial.println(url);
+  
   http.begin(url);
   int httpCode = http.GET();
+  
+  Serial.printf("   HTTP Code: %d\n", httpCode);
   
   if (httpCode == HTTP_CODE_OK) {
     String payload = http.getString();
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, payload);
     
-    if (!error) {
-      numForecasts = 0;
-      int lastDay = -1;
-      JsonArray list = doc["list"].as<JsonArray>();
+    if (error) {
+      Serial.printf("❌ Error parsing JSON: %s\n", error.c_str());
+      http.end();
+      return;
+    }
+    
+    // Verificar si hay error en la respuesta de la API
+    if (doc["cod"].as<String>() != "200") {
+      Serial.printf("❌ Error API: %s\n", doc["message"].as<String>().c_str());
+      http.end();
+      return;
+    }
+    
+    numForecasts = 0;
+    int lastDay = -1;
+    JsonArray list = doc["list"].as<JsonArray>();
+    
+    Serial.printf("   Registros en respuesta: %d\n", list.size());
+    
+    for (JsonObject item : list) {
+      long dt = item["dt"];
+      struct tm* timeinfo = localtime((time_t*)&dt);
+      int day = timeinfo->tm_mday;
       
-      for (JsonObject item : list) {
-        long dt = item["dt"];
-        struct tm* timeinfo = localtime((time_t*)&dt);
-        int day = timeinfo->tm_mday;
-        
-        if (day != lastDay && timeinfo->tm_hour >= 12 && timeinfo->tm_hour <= 15) {
-          if (numForecasts < 3) {
-            forecasts[numForecasts].dayOfMonth = day;
-            forecasts[numForecasts].tempMin = item["main"]["temp_min"];
-            forecasts[numForecasts].tempMax = item["main"]["temp_max"];
-            forecasts[numForecasts].weatherMain = item["weather"][0]["main"].as<String>();
-            numForecasts++;
-            lastDay = day;
-          }
+      if (day != lastDay && timeinfo->tm_hour >= 12 && timeinfo->tm_hour <= 15) {
+        if (numForecasts < 3) {
+          forecasts[numForecasts].dayOfMonth = day;
+          forecasts[numForecasts].tempMin = item["main"]["temp_min"];
+          forecasts[numForecasts].tempMax = item["main"]["temp_max"];
+          forecasts[numForecasts].weatherMain = item["weather"][0]["main"].as<String>();
+          forecasts[numForecasts].description = item["weather"][0]["description"].as<String>();
+          
+          Serial.printf("   Día %d: %.0f-%.0f°C %s\n", 
+                        day, 
+                        forecasts[numForecasts].tempMin,
+                        forecasts[numForecasts].tempMax,
+                        forecasts[numForecasts].weatherMain.c_str());
+          
+          numForecasts++;
+          lastDay = day;
         }
       }
-      
-      weatherDataAvailable = (numForecasts > 0);
-      lastWeatherUpdate = millis();
-      Serial.printf("Clima: %d días\n", numForecasts);
     }
+    
+    weatherDataAvailable = (numForecasts > 0);
+    lastWeatherUpdate = millis();
+    
+    if (weatherDataAvailable) {
+      Serial.printf("✅ Pronóstico obtenido: %d días\n", numForecasts);
+    } else {
+      Serial.println("⚠️ No se obtuvieron pronósticos");
+    }
+  } else {
+    Serial.printf("❌ HTTP Error: %d\n", httpCode);
   }
+  
   http.end();
 }
 
