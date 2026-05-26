@@ -10,13 +10,33 @@
 #include <Adafruit_AHTX0.h>
 #include <Adafruit_BMP085.h>
 #include <WiFi.h>
+#include <WiFiManager.h>           // WiFiManager para configuración WiFi sin teclado
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>           // Para guardar configuración en NVS
 #include "time.h"
-#include "config.h"
 #include "peron_image.h"
 #include "marcha_peronista.h"
+#include "config.h"                // ⚠️ IMPORTANTE: Incluir configuración con API Key
+
+// ========== CONFIGURACIÓN ==========
+// WiFi se configura por WiFiManager (no necesita credenciales hardcodeadas)
+
+// NTP - Configuración de hora
+#define GMT_OFFSET_SEC -10800     // Argentina GMT-3 (-3 * 3600)
+#define DAYLIGHT_OFFSET_SEC 0      // Argentina no tiene horario de verano actualmente
+#define NTP_SERVER "pool.ntp.org"
+
+// OpenWeather API ya está configurado en config.h
+// Si config.h no existe, usar valores por defecto
+#ifndef OPENWEATHER_API_KEY
+  #define OPENWEATHER_API_KEY "TU_API_KEY_AQUI"
+  #define OPENWEATHER_CITY "Buenos Aires"
+  #define OPENWEATHER_COUNTRY "AR"
+#endif
+
+// Botón presión larga
+#define BUTTON_LONG_PRESS_DURATION 2000  // 2 segundos
 
 // Inicializar display TFT con TFT_eSPI
 TFT_eSPI tft = TFT_eSPI();        // Configuración viene de platformio.ini build_flags
@@ -64,8 +84,12 @@ const unsigned long SNOOZE_DURATION = 480000;  // 8 minutos en milisegundos (8 *
 int snoozeCount = 0;
 
 // Botones
-const int BUTTON_PIN = 27;           // Botón cambio de modo (GPIO 27 disponible - no interfiere con HSPI)
+const int BUTTON_PIN = 27;           // Botón cambio de modo (GPIO 27) - También resetea WiFi si se mantiene 10seg
 const int ALARM_BUTTON_PIN = 4;      // Botón configuración alarma
+
+// WiFi Reset
+unsigned long wifiResetButtonStart = 0;
+const unsigned long WIFI_RESET_DURATION = 10000;  // 10 segundos para resetear WiFi
 
 // Buzzer
 const int BUZZER_PIN = 25;           // Buzzer activo 5V para alarma (GPIO 25)
@@ -152,23 +176,194 @@ const int numEfemerides = sizeof(efemerides) / sizeof(efemerides[0]);
 // ========== FUNCIONES ==========
 void drawPeronSilhouette(); // Prototipo de función
 
+// WiFiManager - Configuración WiFi sin necesidad de recompilar
 void connectWiFi() {
-  Serial.print("Conectando WiFi");
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFiManager wm;
   
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
+  // ========== CONFIGURACIÓN DEL WIFIMANAGER ==========
   
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi OK!");
-    Serial.println(WiFi.localIP());
+  // Timeout para portal de configuración (3 minutos si no se configura)
+  wm.setConfigPortalTimeout(180);
+  
+  // Timeout para intentar conectar a WiFi guardado (30 segundos)
+  wm.setConnectTimeout(30);
+  
+  // Debug en Serial
+  wm.setDebugOutput(true);
+  
+  // Nombre de la red temporal para configuración
+  String apName = "Reloj_Peronista_" + String(ESP.getEfuseMac() & 0xFFFF, HEX);
+  String apPassword = "";  // Sin contraseña para facilitar acceso
+  
+  // ========== MENSAJES EN PANTALLA ==========
+  
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  
+  Serial.println("\n========================================");
+  Serial.println("🌐 INICIANDO WiFi Manager...");
+  Serial.println("========================================");
+  
+  // Verificar si ya hay credenciales guardadas
+  if (WiFi.SSID() != "") {
+    Serial.printf("📡 Credenciales guardadas: %s\n", WiFi.SSID().c_str());
+    Serial.println("Intentando conectar...");
+    
+    tft.setCursor(10, 60);
+    tft.print("Conectando a:");
+    tft.setCursor(10, 90);
+    tft.print(WiFi.SSID());
+    tft.setCursor(10, 120);
+    tft.print("Espere...");
   } else {
-    Serial.println("\nWiFi FAIL");
+    Serial.println("📭 No hay credenciales guardadas");
+    Serial.println("Se abrira portal de configuracion");
   }
+  
+  Serial.println("----------------------------------------");
+  Serial.println("Si no conecta, se abrira portal:");
+  Serial.printf("   Red WiFi: %s\n", apName.c_str());
+  Serial.printf("   Password: %s\n", apPassword.length() > 0 ? apPassword.c_str() : "(ninguna)");
+  Serial.println("   URL: http://192.168.4.1");
+  Serial.println("----------------------------------------");
+  Serial.println("Conectate con tu celular/PC a esa red");
+  Serial.println("y abre un navegador en 192.168.4.1");
+  Serial.println("========================================\n");
+  
+  // ========== CALLBACKS PARA FEEDBACK ==========
+  
+  // Callback cuando entra en modo AP (portal de configuración)
+  wm.setAPCallback([](WiFiManager *myWiFiManager) {
+    Serial.println("\n🔵 MODO PORTAL ACTIVO");
+    Serial.println("========================================");
+    Serial.printf("Red WiFi: %s\n", myWiFiManager->getConfigPortalSSID().c_str());
+    Serial.println("IP Portal: 192.168.4.1");
+    Serial.println("========================================");
+    
+    // Mostrar en pantalla
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    
+    tft.setCursor(10, 10);
+    tft.print("MODO CONFIGURACION");
+    
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setCursor(10, 50);
+    tft.print("1. Conectate a:");
+    
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setCursor(10, 80);
+    tft.print(myWiFiManager->getConfigPortalSSID());
+    
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setCursor(10, 120);
+    tft.print("2. Abre navegador");
+    
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setCursor(10, 150);
+    tft.print("192.168.4.1");
+    
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setCursor(10, 190);
+    tft.print("3. Configura WiFi");
+    
+    tft.setTextSize(1);
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setCursor(10, 230);
+    tft.print("Timeout: 10 minutos");
+    
+    // Instrucción de reset
+    tft.setTextSize(1);
+    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.setCursor(10, 250);
+    tft.print("Reset: Mantener boton");
+    tft.setCursor(10, 265);
+    tft.print("GPIO27 por 10 seg");
+  });
+  
+  // Callback cuando guarda configuración
+  wm.setSaveConfigCallback([]() {
+    Serial.println("✅ Configuración guardada!");
+    
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setCursor(30, 100);
+    tft.print("GUARDADO!");
+    tft.setTextSize(2);
+    tft.setCursor(30, 140);
+    tft.print("Conectando...");
+  });
+  
+  // ========== INTENTAR CONEXIÓN ==========
+  
+  // autoConnect: 
+  // 1. Si hay WiFi guardado → intenta conectar (30 seg timeout)
+  // 2. Si conecta exitosamente → NO abre portal, continúa
+  // 3. Si NO hay WiFi guardado o falla → abre portal (3 min timeout)
+  // 4. Una vez conectado → cierra portal automáticamente
+  
+  bool connected = wm.autoConnect(apName.c_str(), apPassword.c_str());
+  
+  if (!connected) {
+    Serial.println("\n⚠️ FALLÓ CONEXIÓN WiFi");
+    Serial.println("Timeout del portal alcanzado (3 minutos)");
+    Serial.println("El reloj funcionará sin WiFi");
+    Serial.println("(sin hora NTP ni pronóstico del clima)");
+    Serial.println("----------------------------------------");
+    Serial.println("Para configurar WiFi:");
+    Serial.println("Mantén GPIO27 por 10 seg para resetear WiFi");
+    
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setCursor(20, 100);
+    tft.print("Sin WiFi");
+    tft.setTextSize(1);
+    tft.setCursor(10, 140);
+    tft.print("Funcionando en modo");
+    tft.setCursor(10, 155);
+    tft.print("offline. Manten GPIO27");
+    tft.setCursor(10, 170);
+    tft.print("10seg para configurar");
+    
+    delay(3000);
+    // NO reiniciar - continuar sin WiFi
+    return;
+  }
+  
+  // ========== CONEXIÓN EXITOSA ==========
+  
+  Serial.println("\n✅ WiFi CONECTADO!");
+  Serial.println("========================================");
+  Serial.printf("   SSID: %s\n", WiFi.SSID().c_str());
+  Serial.printf("   IP: %s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("   RSSI: %d dBm\n", WiFi.RSSI());
+  Serial.printf("   Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
+  Serial.println("========================================\n");
+  
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.setCursor(30, 80);
+  tft.print("WiFi OK!");
+  
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setCursor(10, 120);
+  tft.print(WiFi.SSID());
+  
+  tft.setTextSize(1);
+  tft.setCursor(10, 150);
+  tft.print(WiFi.localIP().toString());
+  
+  delay(2000);
 }
 
 void setupTime() {
@@ -1014,122 +1209,256 @@ void displayForecast() {
 }
 
 void setup() {
+  // ========== INICIALIZACIÓN SERIAL - MUY IMPORTANTE ==========
   Serial.begin(115200);
-  delay(2000);  // Más tiempo para abrir Serial Monitor
+  delay(3000);  // MÁS tiempo para asegurar que Serial Monitor está listo
   
-  Serial.println("\n\n=== RELOJ PERONISTA TFT ILI9341 ===");
+  // Múltiples líneas vacías para asegurar visibilidad
+  Serial.println("\n\n\n\n\n");
+  Serial.println("========================================");
+  Serial.println("🚀 INICIANDO RELOJ PERONISTA");
+  Serial.println("========================================");
+  Serial.println("Versión: DEBUG WiFi Manager");
+  Serial.println("----------------------------------------");
+  Serial.flush();  // Forzar salida del buffer
   
   // Cargar configuración guardada
+  Serial.println("[1/8] Cargando configuración NVS...");
+  Serial.flush();
   loadConfig();
-  
-  Serial.println("Inicializando SPI...");
+  Serial.println("✅ Configuración cargada");
+  Serial.flush();
   
   // Inicializar SPI explícitamente
+  Serial.println("[2/8] Inicializando SPI...");
+  Serial.flush();
   SPI.begin();
-  Serial.println("SPI OK");
+  Serial.println("✅ SPI OK");
+  Serial.flush();
   
-  // Inicializar TFT
-  Serial.println("Inicializando TFT...");
-  tft.init();
-  Serial.println("TFT inicializado");
+  // Inicializar TFT con manejo de errores
+  Serial.println("[3/8] Inicializando TFT...");
+  Serial.flush();
   
-  // Rotación vertical (portrait)
-  tft.setRotation(0); // Portrait: 0=0° (vertical), 2=180° (vertical invertido)
-  Serial.println("Rotacion configurada: VERTICAL");
+  bool tftOk = false;
+  try {
+    tft.init();
+    tft.setRotation(0); // Portrait: 0=0° (vertical)
+    tft.fillScreen(TFT_BLACK);
+    tftOk = true;
+    Serial.println("✅ TFT inicializado (240x320 vertical)");
+  } catch (...) {
+    Serial.println("⚠️ TFT FALLÓ - Continuando sin pantalla");
+  }
+  Serial.flush();
   
-  tft.fillScreen(TFT_BLACK);
+  // Mostrar splash screen solo si TFT funciona
+  if (tftOk) {
+    // Mostrar imagen de Perón centrada arriba
+    int16_t imgX = (240 - PERON_IMG_WIDTH) / 2;
+    int16_t imgY = 20;
+    tft.pushImage(imgX, imgY, PERON_IMG_WIDTH, PERON_IMG_HEIGHT, peron_image);
+    
+    // Texto "RELOJ PERONISTA" debajo de la imagen
+    tft.setTextSize(4);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    int16_t textY = imgY + PERON_IMG_HEIGHT + 20;
+    tft.setCursor(40, textY);
+    tft.print("RELOJ");
+    tft.setCursor(20, textY + 35);
+    tft.print("PERONISTA");
+    
+    delay(2000);  // Mostrar splash
+  }
   
-  // Mostrar imagen de Perón centrada arriba
-  int16_t imgX = (240 - PERON_IMG_WIDTH) / 2;
-  int16_t imgY = 20;
-  tft.pushImage(imgX, imgY, PERON_IMG_WIDTH, PERON_IMG_HEIGHT, peron_image);
+  // ========== WIFI MANAGER - PASO CRÍTICO ==========
+  Serial.println("[4/8] Configurando WiFi Manager...");
+  Serial.println("----------------------------------------");
+  Serial.println("IMPORTANTE:");
+  Serial.println("Si no hay WiFi guardado, se abrirá");
+  Serial.println("un portal de configuración.");
+  Serial.println("----------------------------------------");
+  Serial.flush();
   
-  // Texto "RELOJ PERONISTA" debajo de la imagen
-  tft.setTextSize(4);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  int16_t textY = imgY + PERON_IMG_HEIGHT + 20;
-  tft.setCursor(40, textY);
-  tft.print("RELOJ");
-  tft.setCursor(20, textY + 35);
-  tft.print("PERONISTA");
-  
-  delay(3000);  // Más tiempo para ver imagen + texto
-  
-  // WiFi
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextSize(3);
-  tft.setTextColor(TFT_WHITE);
-  tft.setCursor(60, 150);
-  tft.print("WiFi...");
+  if (tftOk) {
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_WHITE);
+    tft.setCursor(60, 150);
+    tft.print("WiFi...");
+  }
   
   connectWiFi();
+  Serial.println("✅ WiFi configurado");
+  Serial.flush();
   
-  // NTP
+  // NTP - Sincronizar hora
+  Serial.println("[5/8] Sincronizando hora NTP...");
+  Serial.flush();
+  
   if (WiFi.status() == WL_CONNECTED) {
-    tft.fillScreen(TFT_BLACK);
-    tft.setCursor(20, 150);
-    tft.print("Sync hora...");
+    if (tftOk) {
+      tft.fillScreen(TFT_BLACK);
+      tft.setTextSize(2);
+      tft.setCursor(20, 150);
+      tft.print("Sync hora...");
+    }
     
     setupTime();
+    Serial.println("✅ Hora sincronizada");
+  } else {
+    Serial.println("⚠️ Sin WiFi - Hora no sincronizada");
   }
+  Serial.flush();
   
   randomSeed(esp_random());
   
   // Botones
+  Serial.println("[6/8] Configurando botones...");
+  Serial.flush();
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(ALARM_BUTTON_PIN, INPUT_PULLUP);
   
   // Buzzer (configurado para PWM/tone)
   pinMode(BUZZER_PIN, OUTPUT);
   noTone(BUZZER_PIN);  // Asegurar que está apagado
-  Serial.println("Buzzer configurado en GPIO 25 (Marcha Peronista)");
+  Serial.println("✅ Botones OK (GPIO 27 y 4)");
+  Serial.println("✅ Buzzer OK (GPIO 25)");
+  Serial.flush();
   
-  // Sensores
-  tft.fillScreen(TFT_BLACK);
-  tft.setCursor(30, 150);
-  tft.print("Sensores...");
+  // Sensores - NO CRÍTICOS, pueden fallar
+  Serial.println("[7/8] Detectando sensores...");
+  Serial.flush();
   
+  if (tftOk) {
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextSize(2);
+    tft.setCursor(30, 150);
+    tft.print("Sensores...");
+  }
   
   if (aht.begin()) {
-    Serial.println("AHT10 OK");
+    Serial.println("✅ AHT10 detectado");
     sensorsAvailable = true;
+  } else {
+    Serial.println("⚠️ AHT10 no encontrado");
   }
   
   if (bmp.begin()) {
-    Serial.println("BMP180 OK");
+    Serial.println("✅ BMP180 detectado");
     sensorsAvailable = true;
+  } else {
+    Serial.println("⚠️ BMP180 no encontrado");
   }
   
   if (sensorsAvailable) {
     readSensors();
+  } else {
+    Serial.println("ℹ️  Sin sensores - Continuando sin ellos");
   }
+  Serial.flush();
   
-  // Clima
+  // Clima - NO CRÍTICO
+  Serial.println("[8/8] Obteniendo pronóstico...");
+  Serial.flush();
+  
   if (WiFi.status() == WL_CONNECTED) {
-    tft.fillScreen(TFT_BLACK);
-    tft.setCursor(60, 150);
-    tft.print("Clima...");
+    if (tftOk) {
+      tft.fillScreen(TFT_BLACK);
+      tft.setTextSize(2);
+      tft.setCursor(60, 150);
+      tft.print("Clima...");
+    }
     
     fetchWeatherForecast();
+    Serial.println("✅ Pronóstico obtenido");
+  } else {
+    Serial.println("⚠️ Sin WiFi - Sin pronóstico");
   }
+  Serial.flush();
   
   delay(1000);
   
-  Serial.println("Sistema OK!");
-  Serial.println("Modos: AUTO->HORA->FECHA->EFEM->SENSORES->PRONOSTICO");
+  // ========== SETUP COMPLETADO ==========
+  Serial.println("\n========================================");
+  Serial.println("🎉 SISTEMA LISTO");
+  Serial.println("========================================");
+  Serial.println("Estado:");
+  Serial.printf("  WiFi: %s\n", WiFi.status() == WL_CONNECTED ? "CONECTADO" : "DESCONECTADO");
+  Serial.printf("  IP: %s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("  SSID: %s\n", WiFi.SSID().c_str());
+  Serial.printf("  TFT: %s\n", tftOk ? "OK" : "FALLO");
+  Serial.printf("  Sensores: %s\n", sensorsAvailable ? "OK" : "NO");
   
   if (alarmEnabled) {
-    Serial.printf("⏰ Alarma: %02d:%02d ON\n", alarmHour, alarmMinute);
+    Serial.printf("  Alarma: %02d:%02d ON\n", alarmHour, alarmMinute);
   } else {
-    Serial.println("⏰ Alarma: OFF");
+    Serial.println("  Alarma: OFF");
   }
+  
+  Serial.println("\nModos disponibles:");
+  Serial.println("  - GPIO27: Cambiar modo / Snooze");
+  Serial.println("  - GPIO4: Config alarma / Apagar");
+  Serial.println("  - GPIO27 (10seg): Reset WiFi");
+  Serial.println("========================================\n");
+  Serial.flush();
 }
 
 void checkModeButton() {
   unsigned long currentMillis = millis();
+  int buttonState = digitalRead(BUTTON_PIN);
+  
+  // ========== DETECTAR PRESIÓN DE 10 SEGUNDOS PARA RESET WIFI ==========
+  if (!alarmTriggered && !alarmConfigMode) {  // Solo en modo normal
+    if (buttonState == LOW && wifiResetButtonStart == 0) {
+      wifiResetButtonStart = currentMillis;
+    }
+    
+    // Si mantiene presionado por 10 segundos
+    if (buttonState == LOW && wifiResetButtonStart > 0) {
+      unsigned long pressDuration = currentMillis - wifiResetButtonStart;
+      
+      if (pressDuration >= WIFI_RESET_DURATION) {
+        // RESET WIFI!
+        Serial.println("🔄 RESET WIFI - Borrando credenciales...");
+        
+        tft.fillScreen(TFT_BLACK);
+        tft.setTextSize(3);
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.setCursor(30, 100);
+        tft.print("RESET WIFI");
+        tft.setTextSize(2);
+        tft.setCursor(20, 140);
+        tft.print("Reiniciando...");
+        
+        WiFiManager wm;
+        wm.resetSettings();  // Borrar credenciales guardadas
+        
+        delay(2000);
+        ESP.restart();  // Reiniciar para entrar a modo config
+      }
+      
+      // Feedback visual mientras mantiene presionado (cada segundo)
+      if (pressDuration >= 3000 && pressDuration < WIFI_RESET_DURATION) {
+        int secondsRemaining = (WIFI_RESET_DURATION - pressDuration) / 1000;
+        if (pressDuration % 1000 < 100) {  // Cada segundo aproximadamente
+          Serial.printf("Mantener %d seg más para reset WiFi...\n", secondsRemaining);
+        }
+      }
+    }
+    
+    // Reset contador cuando suelta
+    if (buttonState == HIGH && wifiResetButtonStart > 0) {
+      unsigned long pressDuration = currentMillis - wifiResetButtonStart;
+      if (pressDuration < WIFI_RESET_DURATION) {
+        Serial.println("Reset WiFi cancelado");
+      }
+      wifiResetButtonStart = 0;
+    }
+  }
   
   // SI ALARMA SONANDO: BOTÓN ES SNOOZE
-  if (alarmTriggered && digitalRead(BUTTON_PIN) == LOW && 
+  if (alarmTriggered && buttonState == LOW && 
       (currentMillis - lastModeButtonPress > MODE_BUTTON_DEBOUNCE)) {
     
     lastModeButtonPress = currentMillis;
