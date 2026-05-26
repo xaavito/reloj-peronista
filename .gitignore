@@ -11,4 +11,5 @@ src/config.h
 stl/Escudo.stl
 stl/peron.jpg
 
-include/marchaPeronista.mp3
+*.mp3
+*.mp4
