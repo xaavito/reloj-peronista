@@ -98,41 +98,33 @@
 #define NOTE_DS8 4978
 #define REST     0
 
-// ========== MARCHA PERONISTA - VERSIÓN 8-BIT EXTRAÍDA ==========
-// Melodía extraída de versión 8-bit/chiptune
-// 76 notas - Debería sonar mejor en el buzzer
+// ========== MARCHA PERONISTA - VERSIÓN MEJORADA MP4 ==========
+// Melodía extraída de marcha_peronista.mp4 (versión mejorada)
+// 42 notas - Calidad mejorada del audio original
 // Tonalidad: Do# menor (C#m)
 
-// Melodía principal (notas) - EXTRAÍDA DE VERSIÓN 8-BIT
+// Melodía principal (notas) - EXTRAÍDA DE MP4 MEJORADO
 int marchaPeron_melody[] = {
-  NOTE_D3, NOTE_CS3, NOTE_FS3, NOTE_CS3, NOTE_FS3, NOTE_A3, NOTE_CS4, NOTE_D4, 
-  NOTE_CS4, NOTE_CS4, NOTE_CS4, NOTE_CS4, NOTE_FS4, NOTE_FS4, NOTE_A4, NOTE_CS4, 
-  NOTE_B4, NOTE_A4, NOTE_GS4, NOTE_CS4, NOTE_FS4, NOTE_CS4, NOTE_FS4, NOTE_CS4, 
-  NOTE_A3, NOTE_CS4, NOTE_A3, NOTE_CS4, NOTE_A3, NOTE_CS4, NOTE_A3, NOTE_CS4, 
-  NOTE_A3, NOTE_CS4, NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5, NOTE_A4, NOTE_FS4, 
-  NOTE_CS5, NOTE_A4, NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5, NOTE_B4, NOTE_A4, 
-  NOTE_B4, NOTE_GS4, NOTE_B4, NOTE_GS4, NOTE_F4, NOTE_B4, NOTE_GS4, NOTE_F4, 
-  NOTE_B4, NOTE_GS4, NOTE_D5, NOTE_CS5, NOTE_B4, NOTE_CS5, NOTE_D5, NOTE_CS5, 
-  NOTE_B4, NOTE_CS5, NOTE_D5, NOTE_CS5, NOTE_B4, NOTE_CS5, NOTE_A4, NOTE_FS4, 
-  NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5
+  NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5, NOTE_A4, 
+  NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5, NOTE_B4, NOTE_A4, NOTE_B4, NOTE_GS4, 
+  NOTE_B4, NOTE_GS4, NOTE_F4, NOTE_B4, NOTE_GS4, NOTE_F4, NOTE_B4, NOTE_GS4, 
+  NOTE_D5, NOTE_CS5, NOTE_B4, NOTE_CS5, NOTE_D5, NOTE_CS5, NOTE_B4, NOTE_CS5, 
+  NOTE_D5, NOTE_CS5, NOTE_B4, NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5, NOTE_A4, 
+  NOTE_FS4, NOTE_CS5
 };
 
-// Duraciones de cada nota (en milisegundos) - EXTRAÍDAS DE 8-BIT
+// Duraciones de cada nota (en milisegundos) - EXTRAÍDAS DE MP4 MEJORADO
 int marchaPeron_durations[] = {
-  208, 116, 232, 255, 232, 232, 719, 116, 
-  835, 139, 185, 278, 208, 232, 208, 417, 
-  441, 464, 464, 232, 255, 348, 232, 185, 
-  301, 185, 278, 185, 278, 208, 278, 162, 
-  325, 185, 487, 371, 116, 487, 348, 116, 
-  975, 952, 487, 348, 116, 487, 371, 116, 
-  952, 952, 487, 371, 116, 487, 348, 116, 
-  952, 975, 1439, 348, 139, 232, 232, 255, 
-  232, 232, 255, 232, 232, 487, 348, 139, 
-  464, 371, 116, 185
+  487, 371, 116, 487, 348, 116, 975, 952, 
+  487, 348, 116, 487, 371, 116, 952, 952, 
+  487, 371, 116, 487, 348, 116, 952, 975, 
+  1439, 348, 139, 232, 232, 232, 255, 232, 
+  255, 232, 232, 487, 348, 139, 464, 371, 
+  116, 162
 };
 
 // Número de notas en la melodía
-const int marchaPeron_length = 76;
+const int marchaPeron_length = 42;
 
 // ========== VERSIÓN ALTERNATIVA MÁS CORTA ==========
 // Solo primera frase para alarmas menos invasivas

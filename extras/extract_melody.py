@@ -148,7 +148,7 @@ def extract_melody(mp3_file, output_file, duration=30, tempo_bpm=110):
         print(f"  {i+1}. {note_name}{octave} ({notes[i]:.1f}Hz) - {durations[i]}ms")
 
 if __name__ == "__main__":
-    mp3_file = "include/marchaPeronista.mp3"
+    mp3_file = "include/marcha_peronista.mp4"  # Versión mejorada MP4
     output_file = "marcha_extracted.txt"
     
     print("=" * 60)

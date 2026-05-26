@@ -52,6 +52,7 @@ int alarmHour = 7;
 int alarmMinute = 30;
 #endif
 bool alarmTriggered = false;
+bool alarmStoppedManually = false;  // Flag para evitar que se reactive en el mismo minuto
 unsigned long alarmStartTime = 0;
 unsigned long lastAlarmBlink = 0;
 bool alarmBlinkState = false;
@@ -70,6 +71,7 @@ const int ALARM_BUTTON_PIN = 4;      // Botón configuración alarma
 const int BUZZER_PIN = 25;           // Buzzer activo 5V para alarma (GPIO 25)
 int currentMelodyNote = 0;           // Índice de nota actual en melodía
 unsigned long lastNoteTime = 0;      // Tiempo de última nota tocada
+bool alarmScreenDrawn = false;       // Flag para evitar flickeo en pantalla de alarma
 
 // Configuración de alarma
 bool alarmConfigMode = false;
@@ -652,13 +654,18 @@ void checkAlarm() {
     Serial.printf("⏰ Alarma reactivada después de snooze #%d\n", snoozeCount);
   }
   
-  // Activar alarma a la hora configurada
+  // Activar alarma a la hora configurada (solo si no fue apagada manualmente)
   if (timeinfo.tm_hour == alarmHour && timeinfo.tm_min == alarmMinute && 
-      !alarmTriggered && !alarmSnoozed) {
+      !alarmTriggered && !alarmSnoozed && !alarmStoppedManually) {
     alarmTriggered = true;
     alarmStartTime = currentMillis;
     snoozeCount = 0;  // Reset contador de snooze
     Serial.println("🔔 ALARMA ACTIVADA!");
+  }
+  
+  // Reset flag cuando cambia el minuto (permitir alarma en próximo minuto)
+  if (timeinfo.tm_min != alarmMinute) {
+    alarmStoppedManually = false;
   }
   
   // Timeout de alarma (60 minutos máximo si no se apaga)
@@ -686,6 +693,48 @@ void checkAlarm() {
 void displayAlarm() {
   unsigned long currentMillis = millis();
   
+  // ========== DIBUJAR PANTALLA SOLO UNA VEZ ==========
+  if (!alarmScreenDrawn) {
+    tft.fillScreen(TFT_BLACK);
+    
+    // Mostrar imagen de Perón centrada arriba
+    int16_t imgX = (240 - PERON_IMG_WIDTH) / 2;
+    int16_t imgY = 30;
+    tft.pushImage(imgX, imgY, PERON_IMG_WIDTH, PERON_IMG_HEIGHT, peron_image);
+    
+    // Mensaje motivacional debajo
+    int16_t textY = imgY + PERON_IMG_HEIGHT + 20;
+    
+    tft.setTextFont(1);
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    
+    // Línea 1
+    tft.setCursor(10, textY);
+    tft.print("El general necesita");
+    
+    // Línea 2
+    tft.setCursor(10, textY + 20);
+    tft.print("que te levantes y");
+    
+    // Línea 3
+    tft.setCursor(10, textY + 40);
+    tft.print("trabajes para sacar");
+    
+    // Línea 4
+    tft.setCursor(10, textY + 60);
+    tft.print("el pais adelante");
+    
+    // Mostrar contador de snooze si hay
+    if (snoozeCount > 0) {
+      tft.setTextSize(1);
+      tft.setCursor(10, 10);
+      tft.printf("Snooze x%d", snoozeCount);
+    }
+    
+    alarmScreenDrawn = true;
+  }
+  
   // ========== REPRODUCIR MARCHA PERONISTA EN LOOP ==========
   // Verificar si es tiempo de tocar la siguiente nota
   if (currentMillis - lastNoteTime >= marchaPeron_durations[currentMelodyNote]) {
@@ -708,44 +757,6 @@ void displayAlarm() {
     }
     
     lastNoteTime = currentMillis;
-  }
-  
-  // ========== PANTALLA CON IMAGEN DE PERÓN ==========
-  tft.fillScreen(TFT_BLACK);
-  
-  // Mostrar imagen de Perón centrada arriba
-  int16_t imgX = (240 - PERON_IMG_WIDTH) / 2;
-  int16_t imgY = 30;
-  tft.pushImage(imgX, imgY, PERON_IMG_WIDTH, PERON_IMG_HEIGHT, peron_image);
-  
-  // Mensaje motivacional debajo
-  int16_t textY = imgY + PERON_IMG_HEIGHT + 20;
-  
-  tft.setTextFont(1);
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  
-  // Línea 1
-  tft.setCursor(10, textY);
-  tft.print("El general necesita");
-  
-  // Línea 2
-  tft.setCursor(10, textY + 20);
-  tft.print("que te levantes y");
-  
-  // Línea 3
-  tft.setCursor(10, textY + 40);
-  tft.print("trabajes para sacar");
-  
-  // Línea 4
-  tft.setCursor(10, textY + 60);
-  tft.print("el pais adelante");
-  
-  // Mostrar contador de snooze si hay
-  if (snoozeCount > 0) {
-    tft.setTextSize(1);
-    tft.setCursor(10, 10);
-    tft.printf("Snooze x%d", snoozeCount);
   }
 }
 
@@ -822,6 +833,13 @@ void checkAlarmButton() {
       snoozeCount = 0;
       currentMelodyNote = 0;
       noTone(BUZZER_PIN);
+      
+      // Marcar que fue apagada manualmente (no se reactivará en este minuto)
+      alarmStoppedManually = true;
+      
+      // Resetear flag de alarma screen para próxima vez
+      alarmScreenDrawn = false;
+      
       Serial.println("✓ Alarma APAGADA por usuario");
       
       // Mostrar confirmación
@@ -1124,6 +1142,9 @@ void checkModeButton() {
     currentMelodyNote = 0;  // Reset melodía
     
     noTone(BUZZER_PIN);  // Apagar buzzer
+    
+    // Resetear flag de pantalla de alarma para próxima vez
+    alarmScreenDrawn = false;
     
     Serial.printf("💤 SNOOZE #%d activado - 8 minutos\n", snoozeCount);
     

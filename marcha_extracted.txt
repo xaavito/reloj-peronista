@@ -1,0 +1,22 @@
+// Melodía extraída de: include/marcha_peronista.mp4
+// Total de notas: 42
+
+int marchaPeron_melody_extracted[] = {
+  NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5, NOTE_A4, 
+  NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5, NOTE_B4, NOTE_A4, NOTE_B4, NOTE_GS4, 
+  NOTE_B4, NOTE_GS4, NOTE_F4, NOTE_B4, NOTE_GS4, NOTE_F4, NOTE_B4, NOTE_GS4, 
+  NOTE_D5, NOTE_CS5, NOTE_B4, NOTE_CS5, NOTE_D5, NOTE_CS5, NOTE_B4, NOTE_CS5, 
+  NOTE_D5, NOTE_CS5, NOTE_B4, NOTE_CS5, NOTE_A4, NOTE_FS4, NOTE_CS5, NOTE_A4, 
+  NOTE_FS4, NOTE_CS5
+};
+
+int marchaPeron_durations_extracted[] = {
+  487, 371, 116, 487, 348, 116, 975, 952, 
+  487, 348, 116, 487, 371, 116, 952, 952, 
+  487, 371, 116, 487, 348, 116, 952, 975, 
+  1439, 348, 139, 232, 232, 232, 255, 232, 
+  255, 232, 232, 487, 348, 139, 464, 371, 
+  116, 162
+};
+
+const int marchaPeron_extracted_length = 42;
