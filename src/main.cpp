@@ -38,6 +38,23 @@
 // Botón presión larga
 #define BUTTON_LONG_PRESS_DURATION 2000  // 2 segundos
 
+// === COLORES PERONISTAS ===
+// Celeste (parte superior bandera)
+#define COLOR_CELESTE      0x06BF  // Celeste claro
+#define COLOR_CELESTE_OSC  0x0458  // Celeste oscuro
+
+// Amarillo/Dorado (sol)
+#define COLOR_AMARILLO     TFT_YELLOW
+#define COLOR_DORADO       0xFD20  // Dorado/naranja
+
+// Azul (parte inferior bandera)
+#define COLOR_AZUL         0x001F  // Azul oscuro
+#define COLOR_AZUL_CLARO   0x051D  // Azul medio
+
+// Acentos
+#define COLOR_ROJO_PERON   0xF800  // Rojo para alarmas/alertas
+#define COLOR_VERDE_OK     0x07E0  // Verde para estado OK
+
 // Inicializar display TFT con TFT_eSPI
 TFT_eSPI tft = TFT_eSPI();        // Configuración viene de platformio.ini build_flags
 
@@ -446,6 +463,51 @@ void saveConfig() {
   Serial.printf("   Alarma: %02d:%02d %s\n", alarmHour, alarmMinute, alarmEnabled ? "ON" : "OFF");
 }
 
+// === FUNCIONES AUXILIARES PARA PROPUESTA 2 ===
+
+// Dibuja una tarjeta (card) pequeña
+void drawCard(int16_t x, int16_t y, int16_t w, int16_t h, const char* label, const char* value, uint16_t valueColor) {
+  // Borde de la tarjeta
+  tft.drawRoundRect(x, y, w, h, 4, COLOR_CELESTE);
+  tft.drawRoundRect(x+1, y+1, w-2, h-2, 3, COLOR_CELESTE_OSC);
+  
+  // Label arriba (más pequeño)
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.setTextColor(COLOR_AMARILLO, TFT_BLACK);
+  tft.setCursor(x+4, y+4);
+  tft.print(label);
+  
+  // Valor compacto (fuente 1 tamaño 2)
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(valueColor, TFT_BLACK);
+  tft.setCursor(x+6, y+20);
+  tft.print(value);
+}
+
+// Dibuja hora centrada grande con marco
+void drawBigTimeCentered(const char* timeStr) {
+  // Marco con colores peronistas
+  int16_t boxX = 30;
+  int16_t boxY = 20;
+  int16_t boxW = 180;
+  int16_t boxH = 70;
+  
+  tft.drawRoundRect(boxX, boxY, boxW, boxH, 8, COLOR_CELESTE);
+  tft.drawRoundRect(boxX+2, boxY+2, boxW-4, boxH-4, 6, COLOR_AMARILLO);
+  
+  // Hora centrada gigante
+  tft.setTextFont(7);  // Fuente 7 = 48px
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);  // Middle Center
+  tft.drawString(timeStr, 120, 55);
+  
+  // Volver a datum por defecto
+  tft.setTextDatum(TL_DATUM);  // Top Left
+}
+
 void displayAllInfo() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
@@ -460,140 +522,136 @@ void displayAllInfo() {
   // Fondo negro
   tft.fillScreen(TFT_BLACK);
   
-  // ========== HORA ARRIBA (grande) ==========
+  // ========== PROPUESTA 2: LAYOUT MODERNO CON TARJETAS ==========
+  
+  // 1. HORA CENTRADA GRANDE CON MARCO
   char timeStr[6];
   sprintf(timeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
+  drawBigTimeCentered(timeStr);
   
-  tft.setTextFont(4);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(3);  // Tamaño 3x
-  tft.setCursor(20, 10);  // Lo más arriba posible
-  tft.print(timeStr);
+  // 2. TARJETAS (CARDS) EN FILA 1: Temperatura y Humedad
+  int16_t row1Y = 105;
   
-  // ========== FECHA (más chica) ==========
-  tft.setTextFont(2);
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  char dateStr[16];
-  sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
-  tft.setCursor(20, 95);
-  tft.print(dateStr);
-  
-  // ========== SENSORES (mismo tamaño que fecha) ==========
   if (sensorsAvailable) {
-    tft.setTextFont(2);
-    tft.setTextSize(2);
+    char tempStr[10], humStr[10];
+    sprintf(tempStr, "%.1fC", temperature);
+    sprintf(humStr, "%.0f%%", humidity);
     
-    // Temperatura
-    tft.setCursor(10, 130);
-    tft.printf("T:%.1fC", temperature);
+    // Card Temperatura (izquierda) - altura 50px
+    drawCard(10, row1Y, 110, 50, "TEMP", tempStr, COLOR_AMARILLO);
     
-    // Humedad
-    tft.setCursor(10, 155);
-    tft.printf("H:%.1f%%", humidity);
-    
-    // Presión
-    tft.setCursor(10, 180);
-    tft.printf("P:%.0fhPa", pressure);
+    // Card Humedad (derecha) - altura 50px
+    drawCard(130, row1Y, 100, 50, "HUMEDAD", humStr, COLOR_CELESTE);
   }
   
-  // ========== PRONÓSTICO (3 días con íconos GRANDES) ==========
+  // 3. TARJETA PRESIÓN
+  int16_t row2Y = 165;
+  
+  if (sensorsAvailable) {
+    char pressStr[10];
+    sprintf(pressStr, "%.0fhPa", pressure);
+    drawCard(10, row2Y, 110, 50, "PRESION", pressStr, COLOR_VERDE_OK);
+  }
+  
+  // 4. PRONÓSTICO (3 mini cards horizontales)
   if (weatherDataAvailable && numForecasts > 0) {
-    // Mostrar hasta 3 días con íconos más grandes (sin título)
-    // Bajado para no superponerse con presión
+    int16_t pronoY = 225;
+    
+    // Título
+    tft.setTextSize(1);
+    tft.setTextColor(COLOR_AMARILLO, TFT_BLACK);
+    tft.setCursor(10, pronoY);
+    tft.print("PRONOSTICO");
+    
+    // 3 mini cards para pronóstico
     for (int i = 0; i < numForecasts && i < 3; i++) {
-      int16_t yPos = 215 + (i * 30);  // Bajado de 205 a 215, espaciado 30px
+      int16_t cardX = 10 + (i * 73);  // 70px ancho + 3px espacio
+      int16_t cardY = pronoY + 12;
       
-      // Día (más grande)
-      tft.setTextSize(2);
-      tft.setCursor(10, yPos);
+      // Mini borde
+      tft.drawRect(cardX, cardY, 70, 30, COLOR_CELESTE);
+      
+      // Día
+      tft.setTextSize(1);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK);
+      tft.setCursor(cardX+3, cardY+3);
       tft.printf("%02d", forecasts[i].dayOfMonth);
       
-      // Ícono más grande del clima
-      int16_t iconX = 45;
-      int16_t iconY = yPos + 6;
+      // Ícono pequeño
+      int iconX = cardX + 23;
+      int iconY = cardY + 8;
       String weather = forecasts[i].weatherMain;
-      
       if (weather == "Clear") {
-        // Sol más grande
-        tft.fillCircle(iconX, iconY, 5, TFT_YELLOW);
-        // Rayos del sol
-        for (int j = 0; j < 4; j++) {
-          float angle = j * 90 * PI / 180;
-          int x1 = iconX + cos(angle) * 7;
-          int y1 = iconY + sin(angle) * 7;
-          tft.drawPixel(x1, y1, TFT_YELLOW);
-        }
+        tft.fillCircle(iconX, iconY, 3, TFT_YELLOW);
       } else if (weather == "Rain" || weather == "Drizzle") {
-        // Nube con lluvia más grande
-        tft.fillCircle(iconX-3, iconY, 3, TFT_CYAN);
-        tft.fillCircle(iconX+3, iconY, 3, TFT_CYAN);
-        tft.fillRect(iconX-4, iconY, 8, 3, TFT_CYAN);
-        // Gotas
-        tft.drawLine(iconX-2, iconY+4, iconX-2, iconY+7, TFT_CYAN);
-        tft.drawLine(iconX+2, iconY+4, iconX+2, iconY+7, TFT_CYAN);
+        tft.fillCircle(iconX-1, iconY, 2, TFT_CYAN);
+        tft.fillCircle(iconX+1, iconY, 2, TFT_CYAN);
       } else {
-        // Nube más grande
-        tft.fillCircle(iconX-3, iconY, 3, TFT_WHITE);
-        tft.fillCircle(iconX+3, iconY, 3, TFT_WHITE);
-        tft.fillRect(iconX-4, iconY, 8, 3, TFT_WHITE);
+        tft.fillCircle(iconX, iconY, 2, TFT_WHITE);
       }
       
-      // Temperaturas más grandes
-      tft.setTextSize(2);
-      tft.setCursor(70, yPos);
-      tft.printf("%.0f-%.0fC", forecasts[i].tempMin, forecasts[i].tempMax);
+      // Temperatura max
+      tft.setTextSize(1);
+      tft.setTextColor(COLOR_AMARILLO, TFT_BLACK);
+      tft.setCursor(cardX+35, cardY+3);
+      tft.printf("%.0f", forecasts[i].tempMax);
+      
+      // Temperatura min
+      tft.setTextColor(COLOR_CELESTE, TFT_BLACK);
+      tft.setCursor(cardX+35, cardY+14);
+      tft.printf("%.0f", forecasts[i].tempMin);
     }
   }
   
-  // ========== FILA DE INDICADORES (Debajo de hora, antes de fecha) ==========
-  int16_t indicatorY = 75;  // Bajado para no superponerse con hora
-  int16_t startX = 20;      // Alineado con la hora
+  // 5. FOOTER: Alarma con marco si está activa (más abajo)
+  int16_t footerY = 280;
   
-  // ÍCONO WIFI (VERDE)
-  if (WiFi.status() == WL_CONNECTED) {
-    int16_t wifiX = startX + 5;
-    
-    // Arcos WiFi en VERDE
-    tft.drawCircle(wifiX, indicatorY+6, 1, TFT_GREEN);      // Base
-    tft.drawCircle(wifiX, indicatorY+6, 3, TFT_GREEN);      // Nivel 1
-    tft.drawCircle(wifiX, indicatorY+6, 5, TFT_GREEN);      // Nivel 2
-    tft.drawCircle(wifiX, indicatorY+6, 7, TFT_GREEN);      // Nivel 3
-    
-    // Solo mostrar arcos superiores
-    tft.fillRect(wifiX-8, indicatorY+7, 16, 8, TFT_BLACK);
-  }
-  
-  // ÍCONO ALARMA + HORA (al lado del WiFi)
   if (alarmEnabled) {
-    int16_t bellX = startX + 30;  // 25px después del WiFi
+    // Marco rojo para alarma
+    tft.drawRoundRect(10, footerY, 220, 40, 4, COLOR_ROJO_PERON);
+    tft.drawRoundRect(11, footerY+1, 218, 38, 3, COLOR_ROJO_PERON);
     
-    // Campana amarilla
-    tft.fillCircle(bellX+2, indicatorY+6, 2, TFT_YELLOW);       // Cuerpo
-    tft.fillRect(bellX, indicatorY+7, 4, 2, TFT_YELLOW);        // Base
-    tft.fillRect(bellX+1, indicatorY+9, 2, 1, TFT_BLACK);       // Abertura
-    tft.fillCircle(bellX+2, indicatorY+4, 1, TFT_YELLOW);       // Pomo
+    // Ícono campana
+    tft.fillCircle(30, footerY+20, 3, COLOR_AMARILLO);
+    tft.fillRect(28, footerY+22, 4, 3, COLOR_AMARILLO);
     
-    // Hora de alarma al lado
+    // Hora alarma
     tft.setTextFont(1);
-    tft.setTextSize(2);  // Más grande para que se vea bien
-    tft.setCursor(bellX + 10, indicatorY);
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setCursor(50, footerY+12);
     tft.printf("%02d:%02d", alarmHour, alarmMinute);
     
-    // ÍCONO SNOOZE si está activo
+    // "ON" indicador
+    tft.setTextSize(2);
+    tft.setTextColor(COLOR_VERDE_OK, TFT_BLACK);
+    tft.setCursor(140, footerY+15);
+    tft.print("[ON]");
+    
+    // LED parpadeante
+    static unsigned long lastBlink = 0;
+    static bool blinkState = false;
+    if (millis() - lastBlink > 500) {
+      blinkState = !blinkState;
+      lastBlink = millis();
+    }
+    if (blinkState) {
+      tft.fillCircle(215, footerY+20, 4, COLOR_ROJO_PERON);
+    }
+    
+    // Snooze indicator si está activo
     if (alarmSnoozed) {
       tft.setTextSize(2);
       tft.setTextColor(TFT_CYAN, TFT_BLACK);
-      tft.setCursor(bellX + 58, indicatorY);
-      tft.print("Z");  // Icono simple de snooze
-      
-      // Pequeño contador si hay múltiples snoozes
-      if (snoozeCount > 1) {
-        tft.setTextSize(1);
-        tft.setCursor(bellX + 70, indicatorY + 8);
-        tft.printf("x%d", snoozeCount);
-      }
+      tft.setCursor(180, footerY+15);
+      tft.printf("Z%d", snoozeCount);
     }
+  } else {
+    // Alarma OFF - mostrar discretamente
+    tft.setTextSize(1);
+    tft.setTextColor(0x7BEF, TFT_BLACK);  // Gris
+    tft.setCursor(10, footerY+15);
+    tft.print("Alarma: OFF");
   }
   
   // Volver a fuente por defecto
