@@ -31,19 +31,15 @@
 
 ### Pantalla Principal
 
-- [ ] **Mejorar aspecto visual de pantalla principal**
-  - Objetivo: Que se vea más "fachera"
-  - Ideas:
-    - [ ] Agregar bordes/marcos decorativos
-    - [ ] Usar gradientes o colores más atractivos
-    - [ ] Reorganizar elementos para mejor balance visual
-    - [ ] Iconos más grandes y vistosos
-    - [ ] Efectos de sombra en texto importante
-    - [ ] Panel con borde para agrupar sensores
-    - [ ] Separadores visuales entre secciones
-    - [ ] Ajustar tamaño de fuente de hora para que ocupe más pantalla
-    - [ ] Explorar fuentes personalizadas o dibujo de dígitos custom
-    - [ ] Mejorar contraste de íconos del clima
+- [x] **Mejorar aspecto visual de pantalla principal (27/05/2026)**
+  - Implementada Propuesta 2: Layout Moderno con Tarjetas
+  - Cambios realizados:
+    - [x] Hora grande centrada con marco doble celeste/amarillo
+    - [x] Tarjetas (cards) con bordes para temperatura, humedad, presión
+    - [x] Paleta de colores peronistas (celeste, amarillo, verde, rojo)
+    - [x] 3 mini-cards de pronóstico con íconos y temperaturas
+    - [x] Footer de alarma con marco rojo cuando está activa
+    - [x] Mejor jerarquía visual y aprovechamiento del espacio
 
 ### Pantalla de Alarma
 
