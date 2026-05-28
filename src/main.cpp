@@ -414,6 +414,18 @@ void resyncTime() {
   }
 }
 
+// ========== FUNCIONES AUXILIARES PARA UI ==========
+
+// Dibuja un borde con efecto gradiente
+void drawGradientBorder(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color1, uint16_t color2) {
+  // Borde externo con color1
+  tft.drawRoundRect(x, y, w, h, 6, color1);
+  // Borde interno con color2 (más oscuro)
+  tft.drawRoundRect(x+1, y+1, w-2, h-2, 5, color2);
+  // Borde más interno con mezcla
+  tft.drawRoundRect(x+2, y+2, w-4, h-4, 4, color1);
+}
+
 // ========== PERSISTENCIA DE CONFIGURACIÓN ==========
 
 void loadConfig() {
@@ -460,64 +472,104 @@ void displayAllInfo() {
   // Fondo negro
   tft.fillScreen(TFT_BLACK);
   
-  // ========== HORA ARRIBA (grande) ==========
+  // ========== GRUPO 1: HORA, FECHA Y ALARMA ==========
+  // Borde con gradiente para grupo hora/fecha/alarma
+  drawGradientBorder(5, 5, 230, 115, TFT_CYAN, 0x0410);  // Cyan con degradado
+  
+  // HORA (centrada)
   char timeStr[6];
   sprintf(timeStr, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
   
   tft.setTextFont(4);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(3);  // Tamaño 3x
-  tft.setCursor(20, 10);  // Lo más arriba posible
+  tft.setTextSize(3);
+  // Centrar hora (Font 4 size 3 = aprox 24px/char, 5 chars = 120px)
+  int16_t timeWidth = 120;
+  tft.setCursor((240 - timeWidth) / 2, 15);
   tft.print(timeStr);
   
-  // ========== FECHA (más chica) ==========
+  // FECHA (centrada)
   tft.setTextFont(2);
   tft.setTextSize(2);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   char dateStr[16];
   sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
-  tft.setCursor(20, 95);
+  // Centrar fecha (Font 2 size 2 = aprox 12px/char, 10 chars = 120px)
+  int16_t dateWidth = 120;
+  tft.setCursor((240 - dateWidth) / 2, 75);
   tft.print(dateStr);
   
-  // ========== SENSORES (mismo tamaño que fecha) ==========
+  // INDICADOR DE ALARMA (centrado abajo del panel)
+  if (alarmEnabled) {
+    tft.setTextFont(1);
+    tft.setTextSize(2);
+    char alarmStr[10];
+    sprintf(alarmStr, "%c %02d:%02d", 0x07, alarmHour, alarmMinute);  // 0x07 = campana
+    int16_t alarmWidth = 70;
+    tft.setCursor((240 - alarmWidth) / 2, 98);
+    tft.printf("%02d:%02d", alarmHour, alarmMinute);
+    
+    // Icono de snooze si está activo
+    if (alarmSnoozed) {
+      tft.setTextColor(TFT_CYAN, TFT_BLACK);
+      tft.setCursor(160, 98);
+      tft.printf("Z%d", snoozeCount);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    }
+  }
+  
+  // ========== GRUPO 2: SENSORES ==========
   if (sensorsAvailable) {
+    // Borde con gradiente para sensores
+    drawGradientBorder(5, 128, 230, 75, TFT_YELLOW, 0xFD20);  // Amarillo/dorado
+    
     tft.setTextFont(2);
     tft.setTextSize(2);
     
-    // Temperatura
-    tft.setCursor(10, 130);
-    tft.printf("T:%.1fC", temperature);
+    // Temperatura (centrada)
+    char tempStr[16];
+    sprintf(tempStr, "T:%.1fC", temperature);
+    int16_t tempWidth = 90;
+    tft.setCursor((240 - tempWidth) / 2, 138);
+    tft.print(tempStr);
     
-    // Humedad
-    tft.setCursor(10, 155);
-    tft.printf("H:%.1f%%", humidity);
+    // Humedad (centrada)
+    char humStr[16];
+    sprintf(humStr, "H:%.1f%%", humidity);
+    int16_t humWidth = 85;
+    tft.setCursor((240 - humWidth) / 2, 163);
+    tft.print(humStr);
     
-    // Presión
-    tft.setCursor(10, 180);
-    tft.printf("P:%.0fhPa", pressure);
+    // Presión (centrada)
+    char pressStr[16];
+    sprintf(pressStr, "P:%.0fhPa", pressure);
+    int16_t pressWidth = 105;
+    tft.setCursor((240 - pressWidth) / 2, 188);
+    tft.print(pressStr);
   }
   
-  // ========== PRONÓSTICO (3 días con íconos GRANDES) ==========
+  // ========== GRUPO 3: PRONÓSTICO ==========
   if (weatherDataAvailable && numForecasts > 0) {
-    // Mostrar hasta 3 días con íconos más grandes (sin título)
-    // Bajado para no superponerse con presión
+    // Borde con gradiente para pronóstico
+    drawGradientBorder(5, 211, 230, 100, TFT_GREEN, 0x0400);  // Verde con degradado
+    
+    // Mostrar hasta 3 días centrados
     for (int i = 0; i < numForecasts && i < 3; i++) {
-      int16_t yPos = 215 + (i * 30);  // Bajado de 205 a 215, espaciado 30px
+      int16_t yPos = 220 + (i * 30);
       
-      // Día (más grande)
+      // Día
       tft.setTextSize(2);
-      tft.setCursor(10, yPos);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK);
+      tft.setCursor(20, yPos);
       tft.printf("%02d", forecasts[i].dayOfMonth);
       
-      // Ícono más grande del clima
-      int16_t iconX = 45;
-      int16_t iconY = yPos + 6;
+      // Ícono del clima (centrado)
+      int16_t iconX = 70;
+      int16_t iconY = yPos + 8;
       String weather = forecasts[i].weatherMain;
       
       if (weather == "Clear") {
-        // Sol más grande
         tft.fillCircle(iconX, iconY, 5, TFT_YELLOW);
-        // Rayos del sol
         for (int j = 0; j < 4; j++) {
           float angle = j * 90 * PI / 180;
           int x1 = iconX + cos(angle) * 7;
@@ -525,74 +577,23 @@ void displayAllInfo() {
           tft.drawPixel(x1, y1, TFT_YELLOW);
         }
       } else if (weather == "Rain" || weather == "Drizzle") {
-        // Nube con lluvia más grande
         tft.fillCircle(iconX-3, iconY, 3, TFT_CYAN);
         tft.fillCircle(iconX+3, iconY, 3, TFT_CYAN);
         tft.fillRect(iconX-4, iconY, 8, 3, TFT_CYAN);
-        // Gotas
         tft.drawLine(iconX-2, iconY+4, iconX-2, iconY+7, TFT_CYAN);
         tft.drawLine(iconX+2, iconY+4, iconX+2, iconY+7, TFT_CYAN);
       } else {
-        // Nube más grande
         tft.fillCircle(iconX-3, iconY, 3, TFT_WHITE);
         tft.fillCircle(iconX+3, iconY, 3, TFT_WHITE);
         tft.fillRect(iconX-4, iconY, 8, 3, TFT_WHITE);
       }
       
-      // Temperaturas más grandes
+      // Temperaturas (centradas a la derecha)
+      char tempRange[16];
+      sprintf(tempRange, "%.0f-%.0fC", forecasts[i].tempMin, forecasts[i].tempMax);
       tft.setTextSize(2);
-      tft.setCursor(70, yPos);
-      tft.printf("%.0f-%.0fC", forecasts[i].tempMin, forecasts[i].tempMax);
-    }
-  }
-  
-  // ========== FILA DE INDICADORES (Debajo de hora, antes de fecha) ==========
-  int16_t indicatorY = 75;  // Bajado para no superponerse con hora
-  int16_t startX = 20;      // Alineado con la hora
-  
-  // ÍCONO WIFI (VERDE)
-  if (WiFi.status() == WL_CONNECTED) {
-    int16_t wifiX = startX + 5;
-    
-    // Arcos WiFi en VERDE
-    tft.drawCircle(wifiX, indicatorY+6, 1, TFT_GREEN);      // Base
-    tft.drawCircle(wifiX, indicatorY+6, 3, TFT_GREEN);      // Nivel 1
-    tft.drawCircle(wifiX, indicatorY+6, 5, TFT_GREEN);      // Nivel 2
-    tft.drawCircle(wifiX, indicatorY+6, 7, TFT_GREEN);      // Nivel 3
-    
-    // Solo mostrar arcos superiores
-    tft.fillRect(wifiX-8, indicatorY+7, 16, 8, TFT_BLACK);
-  }
-  
-  // ÍCONO ALARMA + HORA (al lado del WiFi)
-  if (alarmEnabled) {
-    int16_t bellX = startX + 30;  // 25px después del WiFi
-    
-    // Campana amarilla
-    tft.fillCircle(bellX+2, indicatorY+6, 2, TFT_YELLOW);       // Cuerpo
-    tft.fillRect(bellX, indicatorY+7, 4, 2, TFT_YELLOW);        // Base
-    tft.fillRect(bellX+1, indicatorY+9, 2, 1, TFT_BLACK);       // Abertura
-    tft.fillCircle(bellX+2, indicatorY+4, 1, TFT_YELLOW);       // Pomo
-    
-    // Hora de alarma al lado
-    tft.setTextFont(1);
-    tft.setTextSize(2);  // Más grande para que se vea bien
-    tft.setCursor(bellX + 10, indicatorY);
-    tft.printf("%02d:%02d", alarmHour, alarmMinute);
-    
-    // ÍCONO SNOOZE si está activo
-    if (alarmSnoozed) {
-      tft.setTextSize(2);
-      tft.setTextColor(TFT_CYAN, TFT_BLACK);
-      tft.setCursor(bellX + 58, indicatorY);
-      tft.print("Z");  // Icono simple de snooze
-      
-      // Pequeño contador si hay múltiples snoozes
-      if (snoozeCount > 1) {
-        tft.setTextSize(1);
-        tft.setCursor(bellX + 70, indicatorY + 8);
-        tft.printf("x%d", snoozeCount);
-      }
+      tft.setCursor(110, yPos);
+      tft.print(tempRange);
     }
   }
   
