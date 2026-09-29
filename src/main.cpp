@@ -509,39 +509,44 @@ void displayAllInfo() {
       tft.setCursor(10, yPos);
       tft.printf("%02d", forecasts[i].dayOfMonth);
       
-      // Ícono más grande del clima
-      int16_t iconX = 45;
-      int16_t iconY = yPos + 6;
+      // Ícono MUCHO más grande del clima
+      int16_t iconX = 55;  // Movido un poco a la derecha para dar espacio
+      int16_t iconY = yPos + 8;
       String weather = forecasts[i].weatherMain;
       
       if (weather == "Clear") {
-        // Sol más grande
-        tft.fillCircle(iconX, iconY, 5, TFT_YELLOW);
-        // Rayos del sol
-        for (int j = 0; j < 4; j++) {
-          float angle = j * 90 * PI / 180;
-          int x1 = iconX + cos(angle) * 7;
-          int y1 = iconY + sin(angle) * 7;
-          tft.drawPixel(x1, y1, TFT_YELLOW);
+        // Sol MUCHO más grande
+        tft.fillCircle(iconX, iconY, 8, TFT_YELLOW);  // radio de 5 → 8
+        // Rayos del sol más largos
+        for (int j = 0; j < 8; j++) {  // 4 → 8 rayos
+          float angle = j * 45 * PI / 180;  // 90° → 45° (más rayos)
+          int x1 = iconX + cos(angle) * 10;  // 7 → 10
+          int y1 = iconY + sin(angle) * 10;
+          int x2 = iconX + cos(angle) * 13;  // líneas más largas
+          int y2 = iconY + sin(angle) * 13;
+          tft.drawLine(x1, y1, x2, y2, TFT_YELLOW);
         }
       } else if (weather == "Rain" || weather == "Drizzle") {
-        // Nube con lluvia más grande
-        tft.fillCircle(iconX-3, iconY, 3, TFT_CYAN);
-        tft.fillCircle(iconX+3, iconY, 3, TFT_CYAN);
-        tft.fillRect(iconX-4, iconY, 8, 3, TFT_CYAN);
-        // Gotas
-        tft.drawLine(iconX-2, iconY+4, iconX-2, iconY+7, TFT_CYAN);
-        tft.drawLine(iconX+2, iconY+4, iconX+2, iconY+7, TFT_CYAN);
+        // Nube con lluvia MUCHO más grande
+        tft.fillCircle(iconX-5, iconY, 5, TFT_CYAN);  // 3 → 5
+        tft.fillCircle(iconX+5, iconY, 5, TFT_CYAN);  // 3 → 5
+        tft.fillCircle(iconX, iconY-3, 5, TFT_CYAN);  // círculo adicional arriba
+        tft.fillRect(iconX-6, iconY, 12, 5, TFT_CYAN);  // 8,3 → 12,5
+        // Gotas más largas
+        tft.drawLine(iconX-4, iconY+6, iconX-4, iconY+11, TFT_CYAN);  // +7 → +11
+        tft.drawLine(iconX, iconY+7, iconX, iconY+12, TFT_CYAN);
+        tft.drawLine(iconX+4, iconY+6, iconX+4, iconY+11, TFT_CYAN);
       } else {
-        // Nube más grande
-        tft.fillCircle(iconX-3, iconY, 3, TFT_WHITE);
-        tft.fillCircle(iconX+3, iconY, 3, TFT_WHITE);
-        tft.fillRect(iconX-4, iconY, 8, 3, TFT_WHITE);
+        // Nube MUCHO más grande
+        tft.fillCircle(iconX-5, iconY, 5, TFT_WHITE);  // 3 → 5
+        tft.fillCircle(iconX+5, iconY, 5, TFT_WHITE);  // 3 → 5
+        tft.fillCircle(iconX, iconY-3, 5, TFT_WHITE);  // círculo adicional arriba
+        tft.fillRect(iconX-6, iconY, 12, 5, TFT_WHITE);  // 8,3 → 12,5
       }
       
-      // Temperaturas más grandes
-      tft.setTextSize(2);
-      tft.setCursor(70, yPos);
+      // Temperaturas más PEQUEÑAS
+      tft.setTextSize(1);  // 2 → 1 (más chicas)
+      tft.setCursor(90, yPos + 4);  // Ajustado para centrar verticalmente
       tft.printf("%.0f-%.0fC", forecasts[i].tempMin, forecasts[i].tempMax);
     }
   }
